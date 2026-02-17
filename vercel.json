@@ -3,9 +3,9 @@
   "buildCommand": "pnpm run build",
   "installCommand": "pnpm install",
   "functions": {
-    "api/index.ts": {
+    "api/index.js": {
       "maxDuration": 30,
-      "includeFiles": "packages/**"
+      "includeFiles": "packages/**/dist/**"
     }
   },
   "rewrites": [
