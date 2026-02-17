@@ -1,0 +1,39 @@
+{
+  "name": "@alpharena/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@alpharena/shared": "workspace:*",
+    "@alpharena/db": "workspace:*",
+    "@alpharena/game-engine": "workspace:*",
+    "@alpharena/matchmaking": "workspace:*",
+    "@alpharena/orchestrator": "workspace:*",
+    "@alpharena/realtime": "workspace:*",
+    "@alpharena/settlement": "workspace:*",
+    "fastify": "^5.1.0",
+    "@fastify/websocket": "^11.0.0",
+    "@fastify/cors": "^10.0.0",
+    "@fastify/rate-limit": "^10.2.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.23.0",
+    "mongoose": "^8.9.0",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/ws": "^8.5.0"
+  }
+}

@@ -294,55 +294,43 @@ describe("Reversi - complete game scenario", () => {
 
   it("handles a player with no moves being skipped", () => {
     // Construct a board where WHITE has no legal moves but BLACK does.
-    // Fill the board so that white is boxed out.
+    // We'll build a nearly full board of BLACK with a few WHITE pieces
+    // and one strategic empty square.
     const board: Board = [];
     for (let r = 0; r < BOARD_SIZE; r++) {
       const row: Piece[] = [];
       for (let c = 0; c < BOARD_SIZE; c++) {
-        row.push(EMPTY);
+        row.push(BLACK);
       }
       board.push(row);
     }
 
-    // Create a situation: row 0 all black except last cell is white,
-    // and row 1 col 7 is empty.
-    // Black at (0,0)-(0,6), White at (0,7), rest empty.
-    // White cannot move because no empty square adjacent to black pieces
-    // that would flip anything via white.
-    // Actually, let's use a simpler construction:
-    // Board is mostly empty. Black pieces along column 0 rows 0-6,
-    // White piece at (7,0). Empty at (7,1).
-    // White has no moves because it can't flip any black pieces.
+    // Set up: row 7 has BLACK BLACK ... BLACK WHITE EMPTY
+    // and row 6 col 7 is BLACK (already is).
+    // For BLACK to play at (7,7): direction left (7,6) is WHITE,
+    // then (7,5) must be BLACK. That gives a valid bracket.
+    // For WHITE at (7,7): no valid move since (7,7) is the empty square
+    // and direction left is WHITE (own piece, no opponent in between).
+    board[7][6] = WHITE;
+    board[7][7] = EMPTY;
 
-    // Simple approach: almost-full board
-    for (let r = 0; r < BOARD_SIZE; r++) {
-      for (let c = 0; c < BOARD_SIZE; c++) {
-        board[r][c] = BLACK;
-      }
-    }
-    // Place a single white piece and create one empty square such that
-    // only black can move there.
-    board[7][7] = WHITE;
-    board[7][6] = EMPTY;
-
-    // White has no legal moves (the only empty square (7,6) is adjacent
-    // to mostly black, and placing white there would need a line of
-    // black ending with white, but there's only one white at (7,7).
-    // Actually (7,6) -> direction right -> (7,7) is WHITE, so that's
-    // the player's own piece for white — no opponent pieces in between.
-    // So white CAN'T move at (7,6).
-
-    // Verify: White has no moves
+    // Verify: White has no legal moves.
+    // The only empty square is (7,7). For white to play there,
+    // it needs a direction with consecutive BLACK pieces ending in WHITE.
+    // Left: (7,6) is WHITE — own piece, no opponent pieces first. Invalid.
+    // Up: (6,7) is BLACK, (5,7) is BLACK, ... all BLACK. No WHITE at end. Invalid.
+    // Up-left: (6,6) is BLACK, ... all BLACK. No WHITE at end. Invalid.
+    // All other directions go out of bounds immediately.
     const whiteMoves = getLegalMoves(board, WHITE);
     expect(whiteMoves.length).toBe(0);
 
-    // Black CAN move at (7,6) — direction right sees WHITE at (7,7)
-    // which means it would flip (7,7). That's a valid move for BLACK.
+    // BLACK can move at (7,7): direction left sees WHITE at (7,6),
+    // then BLACK at (7,5). This is a valid bracket that flips (7,6).
     const blackMoves = getLegalMoves(board, BLACK);
     expect(blackMoves.length).toBe(1);
-    expect(blackMoves[0]).toEqual([7, 6]);
+    expect(blackMoves[0]).toEqual([7, 7]);
 
-    // Game is NOT over because black can still move
+    // Game is NOT over because BLACK can still move
     expect(isGameOver(board)).toBe(false);
   });
 });

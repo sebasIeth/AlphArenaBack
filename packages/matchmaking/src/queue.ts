@@ -24,7 +24,7 @@ export class MatchmakingQueue {
    */
   async loadFromDatabase(): Promise<void> {
     try {
-      const docs: IQueueEntry[] = await QueueEntryModel.find({
+      const docs = await QueueEntryModel.find({
         status: { $in: ["waiting", "pairing"] },
       }).lean();
 
