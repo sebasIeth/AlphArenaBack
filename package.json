@@ -5,7 +5,8 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "turbo run dev",
-    "build": "turbo run build",
+    "build": "pnpm --filter @alpharena/shared build && pnpm --filter @alpharena/db --filter @alpharena/game-engine --filter @alpharena/settlement --filter @alpharena/realtime build && pnpm --filter @alpharena/matchmaking build && pnpm --filter @alpharena/orchestrator build && pnpm --filter @alpharena/api build",
+    "build:turbo": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "clean": "turbo run clean"
