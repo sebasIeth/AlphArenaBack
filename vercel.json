@@ -1,11 +1,11 @@
 {
   "version": 2,
-  "buildCommand": "pnpm run build",
+  "buildCommand": "pnpm --filter @alpharena/shared build && pnpm --filter @alpharena/db --filter @alpharena/game-engine --filter @alpharena/settlement --filter @alpharena/realtime build && pnpm --filter @alpharena/matchmaking build && pnpm --filter @alpharena/orchestrator build && pnpm --filter @alpharena/api build",
   "installCommand": "pnpm install",
   "functions": {
     "api/index.js": {
       "maxDuration": 30,
-      "includeFiles": "packages/**/dist/**"
+      "includeFiles": "packages/**"
     }
   },
   "rewrites": [
