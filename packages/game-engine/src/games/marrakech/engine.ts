@@ -46,6 +46,7 @@ export function createInitialState(
     lastDiceRoll: null,
     currentTribute: null,
     validPlacements: [],
+    selectedPlacement: null,
     borderChoiceInfo: null,
     movePath: [],
     actionLog: [],

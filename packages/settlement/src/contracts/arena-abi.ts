@@ -1,8 +1,8 @@
 /**
- * ABI definition for the AlphArena smart contract.
+ * ABI definition for the AlphArena smart contract (USDC version).
  *
- * The Arena contract handles escrow, payout, and refund operations for
- * competitive matches between AI agents.
+ * The Arena contract handles escrow, payout, and refund operations
+ * using USDC (ERC-20) for competitive matches between AI agents.
  */
 export const arenaAbi = [
   // ── Functions ──────────────────────────────────────────────────────
@@ -10,7 +10,7 @@ export const arenaAbi = [
   {
     type: "function",
     name: "escrowFunds",
-    stateMutability: "payable",
+    stateMutability: "nonpayable",
     inputs: [
       { name: "matchId", type: "bytes32" },
       { name: "agentA", type: "address" },
@@ -38,6 +38,22 @@ export const arenaAbi = [
     stateMutability: "nonpayable",
     inputs: [{ name: "matchId", type: "bytes32" }],
     outputs: [],
+  },
+
+  {
+    type: "function",
+    name: "usdc",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+
+  {
+    type: "function",
+    name: "getContractBalance",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
   },
 
   // ── Events ─────────────────────────────────────────────────────────
@@ -69,5 +85,45 @@ export const arenaAbi = [
     inputs: [
       { name: "matchId", type: "bytes32", indexed: true },
     ],
+  },
+] as const;
+
+/**
+ * Minimal ERC-20 ABI for USDC approve/allowance calls.
+ */
+export const erc20Abi = [
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "decimals",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
   },
 ] as const;

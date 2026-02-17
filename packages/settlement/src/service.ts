@@ -6,19 +6,29 @@ import { releasePayout, refundMatch } from "./payout.js";
 
 const logger = pino({ name: "settlement:service" });
 
+/** USDC addresses per chain */
+const USDC_BY_CHAIN: Record<number, Address> = {
+  8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  // Base mainnet
+  84532: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // Base Sepolia
+};
+
 export interface SettlementServiceConfig {
   /** JSON-RPC endpoint URL. Omit to run without blockchain. */
   rpcUrl?: string;
   /** Hex-encoded private key (with 0x prefix). Omit to run without blockchain. */
   privateKey?: string;
-  /** Numeric EVM chain ID. Defaults to 1 (mainnet). */
+  /** Numeric EVM chain ID. Defaults to 84532 (Base Sepolia). */
   chainId?: number;
   /** Deployed Arena contract address. Omit to run without blockchain. */
   contractAddress?: string;
+  /** USDC token address. Auto-resolved from chainId if not provided. */
+  usdcAddress?: string;
 }
 
 /**
  * High-level service that wraps all on-chain settlement operations.
+ *
+ * All escrow/payout/refund operations use USDC (ERC-20) on Base.
  *
  * When blockchain configuration is not provided (common during local
  * development), every write method logs a warning and returns `null` instead
@@ -29,6 +39,7 @@ export class SettlementService {
   private readonly config: SettlementServiceConfig;
   private clients: SettlementClients | null = null;
   private contractAddress: Address | null = null;
+  private usdcAddress: Address | null = null;
 
   constructor(config: SettlementServiceConfig) {
     this.config = config;
@@ -42,7 +53,7 @@ export class SettlementService {
    * safe stubs.
    */
   start(): void {
-    const { rpcUrl, privateKey, chainId, contractAddress } = this.config;
+    const { rpcUrl, privateKey, chainId, contractAddress, usdcAddress } = this.config;
 
     if (!rpcUrl || !privateKey || !contractAddress) {
       logger.warn(
@@ -52,16 +63,28 @@ export class SettlementService {
       return;
     }
 
-    this.clients = createSettlementClient(rpcUrl, privateKey, chainId ?? 1);
+    const resolvedChainId = chainId ?? 84532;
+    this.clients = createSettlementClient(rpcUrl, privateKey, resolvedChainId);
     this.contractAddress = contractAddress as Address;
+
+    // Resolve USDC address from config or chain ID
+    this.usdcAddress = (usdcAddress as Address) ?? USDC_BY_CHAIN[resolvedChainId] ?? null;
+
+    if (!this.usdcAddress) {
+      logger.warn(
+        { chainId: resolvedChainId },
+        "No USDC address configured or known for this chain. Escrow will fail.",
+      );
+    }
 
     logger.info(
       {
-        chainId: chainId ?? 1,
+        chainId: resolvedChainId,
         contract: contractAddress,
+        usdc: this.usdcAddress,
         account: this.clients.account.address,
       },
-      "Settlement service started",
+      "Settlement service started (USDC mode)",
     );
   }
 
@@ -71,13 +94,14 @@ export class SettlementService {
   stop(): void {
     this.clients = null;
     this.contractAddress = null;
+    this.usdcAddress = null;
     logger.info("Settlement service stopped");
   }
 
   // ── Helpers ──────────────────────────────────────────────────────
 
   private isReady(): boolean {
-    return this.clients !== null && this.contractAddress !== null;
+    return this.clients !== null && this.contractAddress !== null && this.usdcAddress !== null;
   }
 
   /**
@@ -98,7 +122,7 @@ export class SettlementService {
   // ── Public API ───────────────────────────────────────────────────
 
   /**
-   * Lock escrow funds for a match.
+   * Lock escrow USDC for a match.
    *
    * @returns The transaction hash, or `null` when running in no-op mode.
    */
@@ -117,6 +141,7 @@ export class SettlementService {
 
     const txHash = await lockEscrow({
       contractAddress: this.contractAddress!,
+      usdcAddress: this.usdcAddress!,
       publicClient,
       walletClient,
       account,
@@ -130,7 +155,7 @@ export class SettlementService {
   }
 
   /**
-   * Release escrowed funds to the match winner.
+   * Release escrowed USDC to the match winner.
    *
    * @returns The transaction hash, or `null` when running in no-op mode.
    */

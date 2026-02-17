@@ -5,6 +5,8 @@ import type {
   MarrakechDirection,
   MarrakechCarpetPlacement,
   Side,
+  Board,
+  Piece,
 } from "@alpharena/shared";
 import { marrakech } from "@alpharena/game-engine";
 import { MoveModel, MatchModel } from "@alpharena/db";
@@ -115,18 +117,18 @@ export class MarrakechTurnController {
         continue;
       }
 
-      if (
-        borderResponse.action.type !== "borderChoice" ||
-        !borderOptions.some((o) => o.direction === borderResponse.action.direction)
-      ) {
+      if (borderResponse.action.type !== "borderChoice") {
         state = marrakech.chooseBorderDirection(state, borderOptions[0].direction);
         continue;
       }
 
-      state = marrakech.chooseBorderDirection(
-        state,
-        (borderResponse.action as { type: "borderChoice"; direction: MarrakechDirection }).direction,
-      );
+      const chosenDir = borderResponse.action.direction;
+      if (!borderOptions.some((o) => o.direction === chosenDir)) {
+        state = marrakech.chooseBorderDirection(state, borderOptions[0].direction);
+        continue;
+      }
+
+      state = marrakech.chooseBorderDirection(state, chosenDir);
     }
 
     // Phase 4: Tribute (automatic)
@@ -299,10 +301,10 @@ export class MarrakechTurnController {
     });
   }
 
-  private serializeBoard(board: MarrakechGameState["board"]): number[][] {
+  private serializeBoard(board: MarrakechGameState["board"]): Board {
     return board.map((row) =>
-      row.map((cell) => (cell ? cell.playerId + 1 : 0)),
-    );
+      row.map((cell) => (cell ? cell.playerId + 1 : 0) as Piece),
+    ) as Board;
   }
 
   private async saveMove(

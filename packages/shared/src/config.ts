@@ -8,8 +8,9 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1),
   JWT_EXPIRES_IN: z.string().default("7d"),
   RPC_URL: z.string().url().optional(),
-  CHAIN_ID: z.coerce.number().default(1),
+  CHAIN_ID: z.coerce.number().default(84532), // Base Sepolia
   CONTRACT_ADDRESS: z.string().optional(),
+  USDC_ADDRESS: z.string().optional(),
   PRIVATE_KEY: z.string().optional(),
   MATCH_DURATION_MS: z.coerce.number().default(1_200_000),
   TURN_TIMEOUT_MS: z.coerce.number().default(30_000),
