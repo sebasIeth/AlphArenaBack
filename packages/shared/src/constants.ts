@@ -15,5 +15,5 @@ export const PIECE = {
   WHITE: 2,
 } as const;
 
-export const GAME_TYPES = ["reversi"] as const;
+export const GAME_TYPES = ["reversi", "marrakech"] as const;
 export type GameType = (typeof GAME_TYPES)[number];

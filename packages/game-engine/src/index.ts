@@ -15,3 +15,6 @@ export {
   isGameOver,
   getWinner,
 } from "./games/reversi/index.js";
+
+// Marrakech game engine exports
+export * as marrakech from "./games/marrakech/index.js";
