@@ -11,3 +11,5 @@ export type { TurnResult } from "./turn-controller.js";
 export { ResultHandler } from "./result-handler.js";
 export type { SettlementService } from "./result-handler.js";
 export { AgentClient } from "./agent-client.js";
+export { MarrakechTurnController } from "./marrakech-turn-controller.js";
+export type { MarrakechTurnResult } from "./marrakech-turn-controller.js";
