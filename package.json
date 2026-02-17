@@ -4,17 +4,13 @@
   "private": true,
   "packageManager": "pnpm@9.15.4",
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "pnpm --filter @alpharena/api dev",
     "build": "pnpm --filter @alpharena/shared build && pnpm --filter @alpharena/db --filter @alpharena/game-engine --filter @alpharena/settlement --filter @alpharena/realtime build && pnpm --filter @alpharena/matchmaking build && pnpm --filter @alpharena/orchestrator build && pnpm --filter @alpharena/api build",
-    "build:turbo": "turbo run build",
-    "test": "turbo run test",
-    "lint": "turbo run lint",
-    "clean": "turbo run clean"
+    "clean": "pnpm -r run clean"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
     "@vercel/node": "^5.6.3",
-    "turbo": "^2.3.0",
     "typescript": "^5.7.0"
   }
 }
