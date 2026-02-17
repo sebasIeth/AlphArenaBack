@@ -73,6 +73,7 @@ export async function buildServer() {
     privateKey: config.PRIVATE_KEY,
     chainId: config.CHAIN_ID,
     contractAddress: config.CONTRACT_ADDRESS,
+    usdcAddress: config.USDC_ADDRESS,
   });
   settlementService.start();
 

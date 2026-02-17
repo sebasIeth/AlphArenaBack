@@ -1,4 +1,4 @@
-import type { GameState, MatchResultReason, Side, MarrakechGameState } from "@alpharena/shared";
+import type { GameState, MatchResultReason, Side, MarrakechGameState, Board, Piece } from "@alpharena/shared";
 import { MAX_TIMEOUTS } from "@alpharena/shared";
 import { GameEngine, marrakech } from "@alpharena/game-engine";
 import { MatchModel, AgentModel } from "@alpharena/db";
@@ -70,15 +70,15 @@ export class MatchManager {
     );
 
     const potAmount = stakeAmount * 2;
-    let initialBoard: number[][];
+    let initialBoard: Board;
 
     if (gameType === "marrakech") {
       // Create Marrakech initial state
       const mkState = marrakech.createInitialState(2, [agentA.name, agentB.name]);
       // Serialize board for DB
       initialBoard = mkState.board.map((row) =>
-        row.map((cell) => (cell ? cell.playerId + 1 : 0)),
-      );
+        row.map((cell) => (cell ? cell.playerId + 1 : 0) as Piece),
+      ) as Board;
 
       // Store the Marrakech state temporarily (will be associated with matchId after creation)
       const matchDoc = await MatchModel.create({

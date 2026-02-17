@@ -103,6 +103,7 @@ export interface MarrakechGameState {
   lastDiceRoll: MarrakechDiceResult | null;
   currentTribute: MarrakechTributeInfo | null;
   validPlacements: MarrakechCarpetPlacement[];
+  selectedPlacement: MarrakechCarpetPlacement | null;
   borderChoiceInfo: MarrakechBorderChoiceInfo | null;
   movePath: MarrakechPosition[];
   actionLog: MarrakechGameAction[];
