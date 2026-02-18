@@ -5,7 +5,7 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "pnpm --filter @alpharena/api dev",
-    "build": "pnpm --filter @alpharena/shared build && pnpm --filter @alpharena/db --filter @alpharena/game-engine --filter @alpharena/settlement --filter @alpharena/realtime build && pnpm --filter @alpharena/matchmaking build && pnpm --filter @alpharena/orchestrator build && pnpm --filter @alpharena/api build",
+    "build": "bash scripts/build.sh",
     "clean": "pnpm -r run clean"
   },
   "devDependencies": {

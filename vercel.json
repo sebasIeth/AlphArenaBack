@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "buildCommand": "bash scripts/build.sh",
   "installCommand": "pnpm install",
   "functions": {
     "api/index.mjs": {
