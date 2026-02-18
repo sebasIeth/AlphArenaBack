@@ -9,7 +9,7 @@ export class User extends Document {
   @Prop({ required: true, unique: true, index: true })
   username: string;
 
-  @Prop({ unique: true, sparse: true, default: null })
+  @Prop({ type: String, unique: true, sparse: true, default: null })
   email: string | null;
 
   @Prop({ required: true })

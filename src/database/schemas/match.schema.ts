@@ -20,8 +20,8 @@ export const MatchAgentSubDocSchema = SchemaFactory.createForClass(MatchAgentSub
 
 @Schema({ _id: false })
 export class MatchResultSubDoc {
-  @Prop({ type: Types.ObjectId, ref: 'Agent', default: null })
-  winnerId: Types.ObjectId | null;
+  @Prop({ type: Types.ObjectId, ref: 'Agent', default: null, required: false })
+  winnerId: Types.ObjectId;
 
   @Prop({
     type: String,
@@ -69,8 +69,8 @@ export class Match extends Document {
   })
   status: string;
 
-  @Prop({ type: MatchResultSubDocSchema, default: null })
-  result: MatchResultSubDoc | null;
+  @Prop({ type: MatchResultSubDocSchema, default: null, required: false })
+  result: MatchResultSubDoc;
 
   @Prop({ type: [[Number]], default: [] })
   currentBoard: number[][];
@@ -91,13 +91,13 @@ export class Match extends Document {
     type: Object,
     default: () => ({ escrow: null, payout: null }),
   })
-  txHashes: { escrow: string | null; payout: string | null };
+  txHashes: { escrow: string; payout: string };
 
-  @Prop({ default: null })
-  startedAt: Date | null;
+  @Prop({ type: Date, default: null })
+  startedAt: Date;
 
-  @Prop({ default: null })
-  endedAt: Date | null;
+  @Prop({ type: Date, default: null })
+  endedAt: Date;
 
   createdAt: Date;
   updatedAt: Date;
