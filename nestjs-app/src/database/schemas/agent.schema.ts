@@ -1,0 +1,66 @@
+import { Prop, Schema, SchemaFactory, raw } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
+
+@Schema({ _id: false })
+export class AgentStatsSubDoc {
+  @Prop({ default: 0 })
+  wins: number;
+
+  @Prop({ default: 0 })
+  losses: number;
+
+  @Prop({ default: 0 })
+  draws: number;
+
+  @Prop({ default: 0 })
+  totalMatches: number;
+
+  @Prop({ default: 0 })
+  winRate: number;
+
+  @Prop({ default: 0 })
+  totalEarnings: number;
+}
+
+export const AgentStatsSubDocSchema = SchemaFactory.createForClass(AgentStatsSubDoc);
+
+@Schema({ timestamps: true, collection: 'agents' })
+export class Agent extends Document {
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  userId: Types.ObjectId;
+
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true })
+  endpointUrl: string;
+
+  @Prop({ default: 1200, index: true })
+  eloRating: number;
+
+  @Prop({
+    type: AgentStatsSubDocSchema,
+    default: () => ({
+      wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0,
+    }),
+  })
+  stats: AgentStatsSubDoc;
+
+  @Prop({
+    type: String,
+    enum: ['idle', 'queued', 'in_match', 'disabled'],
+    default: 'idle',
+  })
+  status: string;
+
+  @Prop({ type: [String], default: ['reversi'] })
+  gameTypes: string[];
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const AgentSchema = SchemaFactory.createForClass(Agent);
+AgentSchema.index({ userId: 1 });
+AgentSchema.index({ eloRating: 1, status: 1 });
+AgentSchema.index({ 'stats.winRate': -1 });
