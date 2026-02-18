@@ -35,7 +35,12 @@ import { leaderboardRoutes } from "./routes/leaderboard.js";
  *
  * @returns The configured (but not yet listening) Fastify instance.
  */
-export async function buildServer() {
+interface BuildServerOptions {
+  /** Skip background services for serverless environments */
+  serverless?: boolean;
+}
+
+export async function buildServer(options: BuildServerOptions = {}) {
   const config = loadConfig();
 
   // ── Create Fastify instance ──────────────────────────────────────
@@ -65,106 +70,104 @@ export async function buildServer() {
   // MongoDB connection
   await fastify.register(mongodbPlugin);
 
-  // ── Initialize services ──────────────────────────────────────────
-
-  // Settlement service (handles on-chain escrow / payout)
-  const settlementService = new SettlementService({
-    rpcUrl: config.RPC_URL,
-    privateKey: config.PRIVATE_KEY,
-    chainId: config.CHAIN_ID,
-    contractAddress: config.CONTRACT_ADDRESS,
-    usdcAddress: config.USDC_ADDRESS,
-  });
-  settlementService.start();
-
-  // Orchestrator service (manages active match lifecycle)
-  const orchestratorService = new OrchestratorService(settlementService);
-  orchestratorService.start();
-
-  // Matchmaking queue + service
-  const queue = new MatchmakingQueue();
-  const matchmakingService = new MatchmakingService({
-    queue,
-    onPaired: async (
-      agentAId: string,
-      agentBId: string,
-      stakeAmount: number,
-      gameType: string,
-    ): Promise<string> => {
-      // Look up agents to construct MatchAgentInput objects
-      const [agentA, agentB] = await Promise.all([
-        AgentModel.findById(agentAId),
-        AgentModel.findById(agentBId),
-      ]);
-
-      if (!agentA || !agentB) {
-        throw new Error("One or both agents not found during pairing");
-      }
-
-      const inputA: MatchAgentInput = {
-        agentId: agentAId,
-        userId: agentA.userId.toString(),
-        name: agentA.name,
-        endpointUrl: agentA.endpointUrl,
-        eloRating: agentA.eloRating,
-      };
-
-      const inputB: MatchAgentInput = {
-        agentId: agentBId,
-        userId: agentB.userId.toString(),
-        name: agentB.name,
-        endpointUrl: agentB.endpointUrl,
-        eloRating: agentB.eloRating,
-      };
-
-      const matchId = await orchestratorService.startMatch(
-        inputA,
-        inputB,
-        stakeAmount,
-        gameType,
-      );
-      fastify.log.info(
-        { matchId, agentAId, agentBId, gameType, stakeAmount },
-        "Match started from matchmaking pairing",
-      );
-      return matchId;
-    },
-  });
-  await matchmakingService.start();
-
-  // Real-time WebSocket rooms + broadcaster
-  const rooms = new MatchRooms();
-  const broadcaster = new Broadcaster({
-    rooms,
-    eventBus,
-  });
-  broadcaster.start();
-
-  // WebSocket plugin (registers the /ws/matches/:matchId route)
-  await fastify.register(websocketPlugin, { rooms });
-
   // ── REST routes ──────────────────────────────────────────────────
   await fastify.register(healthRoutes);
   await fastify.register(authRoutes, { prefix: "/auth" });
   await fastify.register(agentRoutes, { prefix: "/agents" });
   await fastify.register(matchRoutes, { prefix: "/matches" });
-  await fastify.register(matchmakingRoutes, {
-    prefix: "/matchmaking",
-    matchmakingService,
-  } as Parameters<typeof matchmakingRoutes>[1] & { prefix: string });
   await fastify.register(leaderboardRoutes, { prefix: "/leaderboard" });
 
-  // ── Graceful shutdown ────────────────────────────────────────────
-  fastify.addHook("onClose", async (_instance) => {
-    fastify.log.info("Shutting down services...");
+  // ── Background services (skip in serverless mode) ──────────────
+  if (!options.serverless) {
+    // Settlement service (handles on-chain escrow / payout)
+    const settlementService = new SettlementService({
+      rpcUrl: config.RPC_URL,
+      privateKey: config.PRIVATE_KEY,
+      chainId: config.CHAIN_ID,
+      contractAddress: config.CONTRACT_ADDRESS,
+      usdcAddress: config.USDC_ADDRESS,
+    });
+    settlementService.start();
 
-    broadcaster.stop();
-    matchmakingService.stop();
-    await orchestratorService.stop();
-    settlementService.stop();
+    // Orchestrator service (manages active match lifecycle)
+    const orchestratorService = new OrchestratorService(settlementService);
+    orchestratorService.start();
 
-    fastify.log.info("All services stopped");
-  });
+    // Matchmaking queue + service
+    const queue = new MatchmakingQueue();
+    const matchmakingService = new MatchmakingService({
+      queue,
+      onPaired: async (
+        agentAId: string,
+        agentBId: string,
+        stakeAmount: number,
+        gameType: string,
+      ): Promise<string> => {
+        const [agentA, agentB] = await Promise.all([
+          AgentModel.findById(agentAId),
+          AgentModel.findById(agentBId),
+        ]);
+
+        if (!agentA || !agentB) {
+          throw new Error("One or both agents not found during pairing");
+        }
+
+        const inputA: MatchAgentInput = {
+          agentId: agentAId,
+          userId: agentA.userId.toString(),
+          name: agentA.name,
+          endpointUrl: agentA.endpointUrl,
+          eloRating: agentA.eloRating,
+        };
+
+        const inputB: MatchAgentInput = {
+          agentId: agentBId,
+          userId: agentB.userId.toString(),
+          name: agentB.name,
+          endpointUrl: agentB.endpointUrl,
+          eloRating: agentB.eloRating,
+        };
+
+        const matchId = await orchestratorService.startMatch(
+          inputA,
+          inputB,
+          stakeAmount,
+          gameType,
+        );
+        fastify.log.info(
+          { matchId, agentAId, agentBId, gameType, stakeAmount },
+          "Match started from matchmaking pairing",
+        );
+        return matchId;
+      },
+    });
+    await matchmakingService.start();
+
+    await fastify.register(matchmakingRoutes, {
+      prefix: "/matchmaking",
+      matchmakingService,
+    } as Parameters<typeof matchmakingRoutes>[1] & { prefix: string });
+
+    // Real-time WebSocket rooms + broadcaster
+    const rooms = new MatchRooms();
+    const broadcaster = new Broadcaster({
+      rooms,
+      eventBus,
+    });
+    broadcaster.start();
+
+    await fastify.register(websocketPlugin, { rooms });
+
+    // ── Graceful shutdown ──────────────────────────────────────────
+    fastify.addHook("onClose", async (_instance) => {
+      fastify.log.info("Shutting down services...");
+      broadcaster.stop();
+      matchmakingService.stop();
+      await orchestratorService.stop();
+      settlementService.stop();
+      fastify.log.info("All services stopped");
+    });
+  }
 
   return fastify;
 }

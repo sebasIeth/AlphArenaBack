@@ -1,6 +1,24 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import type { Types } from "mongoose";
 import { z } from "zod";
 import { AgentModel, MatchModel, UserModel } from "@alpharena/db";
+
+interface UserAggResult {
+  _id: Types.ObjectId;
+  totalEarnings: number;
+  totalWins: number;
+  totalLosses: number;
+  totalDraws: number;
+  totalMatches: number;
+  agentCount: number;
+  bestElo: number;
+}
+
+interface UserLean {
+  _id: Types.ObjectId;
+  username?: string;
+  walletAddress?: string;
+}
 
 /**
  * Zod schema for leaderboard query parameters.
@@ -113,16 +131,16 @@ export async function leaderboardRoutes(fastify: FastifyInstance): Promise<void>
       ]);
 
       // Fetch user details for the aggregated results
-      const userIds = userStats.map((entry) => entry._id);
+      const userIds = userStats.map((entry: UserAggResult) => entry._id);
       const users = await UserModel.find({ _id: { $in: userIds } })
         .select("username walletAddress")
-        .lean();
+        .lean() as UserLean[];
 
       const userMap = new Map(
-        users.map((u) => [u._id.toString(), u]),
+        users.map((u: UserLean) => [u._id.toString(), u]),
       );
 
-      const ranked = userStats.map((entry, index) => {
+      const ranked = userStats.map((entry: UserAggResult, index: number) => {
         const user = userMap.get(entry._id.toString());
         return {
           rank: index + 1,
