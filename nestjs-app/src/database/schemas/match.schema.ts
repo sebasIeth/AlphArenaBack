@@ -1,0 +1,112 @@
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
+
+@Schema({ _id: false })
+export class MatchAgentSubDoc {
+  @Prop({ type: Types.ObjectId, ref: 'Agent', required: true })
+  agentId: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  userId: Types.ObjectId;
+
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true })
+  eloAtStart: number;
+}
+
+export const MatchAgentSubDocSchema = SchemaFactory.createForClass(MatchAgentSubDoc);
+
+@Schema({ _id: false })
+export class MatchResultSubDoc {
+  @Prop({ type: Types.ObjectId, ref: 'Agent', default: null })
+  winnerId: Types.ObjectId | null;
+
+  @Prop({
+    type: String,
+    enum: ['score', 'timeout', 'forfeit', 'disconnect', 'draw'],
+    required: true,
+  })
+  reason: string;
+
+  @Prop({ type: Object, required: true })
+  finalScore: { a: number; b: number };
+
+  @Prop({ required: true })
+  totalMoves: number;
+
+  @Prop({ type: Object, required: true })
+  eloChange: { a: number; b: number };
+}
+
+export const MatchResultSubDocSchema = SchemaFactory.createForClass(MatchResultSubDoc);
+
+@Schema({ timestamps: true, collection: 'matches' })
+export class Match extends Document {
+  @Prop({ required: true })
+  gameType: string;
+
+  @Prop({
+    type: {
+      a: { type: MatchAgentSubDocSchema, required: true },
+      b: { type: MatchAgentSubDocSchema, required: true },
+    },
+    required: true,
+  })
+  agents: { a: MatchAgentSubDoc; b: MatchAgentSubDoc };
+
+  @Prop({ required: true })
+  stakeAmount: number;
+
+  @Prop({ required: true })
+  potAmount: number;
+
+  @Prop({
+    type: String,
+    enum: ['starting', 'active', 'completed', 'cancelled', 'error'],
+    default: 'starting',
+  })
+  status: string;
+
+  @Prop({ type: MatchResultSubDocSchema, default: null })
+  result: MatchResultSubDoc | null;
+
+  @Prop({ type: [[Number]], default: [] })
+  currentBoard: number[][];
+
+  @Prop({ type: String, enum: ['a', 'b'], default: 'a' })
+  currentTurn: string;
+
+  @Prop({ default: 0 })
+  moveCount: number;
+
+  @Prop({
+    type: Object,
+    default: () => ({ a: 0, b: 0 }),
+  })
+  timeouts: { a: number; b: number };
+
+  @Prop({
+    type: Object,
+    default: () => ({ escrow: null, payout: null }),
+  })
+  txHashes: { escrow: string | null; payout: string | null };
+
+  @Prop({ default: null })
+  startedAt: Date | null;
+
+  @Prop({ default: null })
+  endedAt: Date | null;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const MatchSchema = SchemaFactory.createForClass(Match);
+MatchSchema.index({ status: 1 });
+MatchSchema.index({ 'agents.a.userId': 1 });
+MatchSchema.index({ 'agents.b.userId': 1 });
+MatchSchema.index({ createdAt: -1 });
+MatchSchema.index({ 'agents.a.agentId': 1, status: 1 });
+MatchSchema.index({ 'agents.b.agentId': 1, status: 1 });

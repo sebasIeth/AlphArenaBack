@@ -1,0 +1,85 @@
+import { Controller, Post, Get, Body, Param, Query, UseGuards, BadRequestException, ForbiddenException, NotFoundException, HttpCode, InternalServerErrorException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { MatchmakingService } from './matchmaking.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AuthPayload } from '../common/types';
+import { Agent } from '../database/schemas';
+import { IsString, MinLength, IsNumber, Min, Max, IsIn } from 'class-validator';
+import { MIN_STAKE, MAX_STAKE } from '../common/constants/game.constants';
+
+class JoinQueueDto {
+  @IsString() @MinLength(1) agentId: string;
+  @IsNumber() @Min(MIN_STAKE) @Max(MAX_STAKE) stakeAmount: number;
+  @IsIn(['reversi', 'marrakech']) gameType: string;
+}
+
+class CancelQueueDto {
+  @IsString() @MinLength(1) agentId: string;
+}
+
+@Controller('matchmaking')
+@UseGuards(JwtAuthGuard)
+export class MatchmakingController {
+  constructor(
+    private readonly matchmakingService: MatchmakingService,
+    @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+  ) {}
+
+  @Post('join')
+  @HttpCode(201)
+  async join(@CurrentUser() user: AuthPayload, @Body() dto: JoinQueueDto) {
+    const agent = await this.agentModel.findById(dto.agentId);
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.status !== 'idle') throw new BadRequestException(`Agent cannot join queue because its status is "${agent.status}". It must be "idle".`);
+    if (!agent.gameTypes.includes(dto.gameType)) throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
+
+    agent.status = 'queued';
+    await agent.save();
+
+    try {
+      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType);
+      return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: dto.gameType, stakeAmount: dto.stakeAmount };
+    } catch (err) {
+      agent.status = 'idle';
+      await agent.save();
+      throw new InternalServerErrorException(err instanceof Error ? err.message : 'Failed to join queue');
+    }
+  }
+
+  @Post('cancel')
+  async cancel(@CurrentUser() user: AuthPayload, @Body() dto: CancelQueueDto) {
+    const agent = await this.agentModel.findById(dto.agentId);
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.status !== 'queued') throw new BadRequestException(`Agent is not in the queue (current status: "${agent.status}")`);
+
+    await this.matchmakingService.leaveQueue(dto.agentId);
+    agent.status = 'idle';
+    await agent.save();
+    return { message: 'Successfully left the matchmaking queue', agentId: dto.agentId };
+  }
+
+  @Get('status/:agentId')
+  async status(@CurrentUser() user: AuthPayload, @Param('agentId') agentId: string) {
+    const agent = await this.agentModel.findById(agentId);
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+
+    const queueEntry = await this.matchmakingService.getQueueStatus(agentId);
+    if (!queueEntry) return { inQueue: false, agentId, agentStatus: agent.status };
+
+    return {
+      inQueue: true, agentId, agentStatus: agent.status,
+      queueEntry: { gameType: queueEntry.gameType, stakeAmount: queueEntry.stakeAmount, eloRating: queueEntry.eloRating, status: queueEntry.status, joinedAt: queueEntry.joinedAt },
+    };
+  }
+
+  @Get('queue-size')
+  async queueSize(@Query('gameType') gameType?: string) {
+    const size = await this.matchmakingService.getQueueSize(gameType);
+    return { queueSize: size, gameType: gameType ?? 'all' };
+  }
+}

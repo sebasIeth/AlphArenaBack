@@ -1,0 +1,62 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
+import { MoveRequest, MoveResponse } from '../common/types';
+
+@Injectable()
+export class AgentClientService {
+  private readonly logger = new Logger(AgentClientService.name);
+  private readonly timeoutMs: number;
+
+  constructor() {
+    this.timeoutMs = TURN_TIMEOUT_MS;
+  }
+
+  async requestMove(endpointUrl: string, moveRequest: MoveRequest): Promise<MoveResponse> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const startTime = Date.now();
+
+    this.logger.log(
+      `Requesting move from agent at ${endpointUrl} (match: ${moveRequest.matchId}, move #${moveRequest.moveNumber})`,
+    );
+
+    try {
+      const response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(moveRequest),
+        signal: controller.signal,
+      });
+
+      const elapsed = Date.now() - startTime;
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '<unreadable>');
+        this.logger.error(
+          `Agent returned HTTP ${response.status} (${elapsed}ms): ${body}`,
+        );
+        throw new Error(`Agent returned HTTP ${response.status}: ${body}`);
+      }
+
+      const data = (await response.json()) as MoveResponse;
+      this.logger.log(`Agent responded with move [${data.move}] (${elapsed}ms)`);
+      return data;
+    } catch (error: unknown) {
+      const elapsed = Date.now() - startTime;
+
+      if (
+        (error instanceof DOMException && error.name === 'AbortError') ||
+        (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted')))
+      ) {
+        this.logger.error(`Agent request timed out after ${elapsed}ms`);
+        throw new Error(`Agent at ${endpointUrl} did not respond within ${this.timeoutMs}ms`);
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Agent request failed (${elapsed}ms): ${message}`);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}

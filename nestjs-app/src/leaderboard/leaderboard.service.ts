@@ -1,0 +1,104 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Agent, Match, User } from '../database/schemas';
+
+@Injectable()
+export class LeaderboardService {
+  constructor(
+    @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(Match.name) private readonly matchModel: Model<Match>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+  ) {}
+
+  async getAgentLeaderboard(limit = 20, gameType?: string) {
+    const filter: Record<string, unknown> = { status: { $ne: 'disabled' }, 'stats.totalMatches': { $gt: 0 } };
+    if (gameType) filter.gameTypes = gameType;
+
+    const agents = await this.agentModel.find(filter).sort({ eloRating: -1 }).limit(limit)
+      .select('name eloRating stats gameTypes userId createdAt').lean();
+
+    const ranked = agents.map((agent: any, index: number) => ({
+      rank: index + 1, agentId: agent._id, name: agent.name, eloRating: agent.eloRating,
+      stats: agent.stats, gameTypes: agent.gameTypes, userId: agent.userId,
+    }));
+
+    return { leaderboard: ranked };
+  }
+
+  async getUserLeaderboard(limit = 20) {
+    const userStats = await this.agentModel.aggregate([
+      { $match: { status: { $ne: 'disabled' } } },
+      {
+        $group: {
+          _id: '$userId',
+          totalEarnings: { $sum: '$stats.totalEarnings' },
+          totalWins: { $sum: '$stats.wins' },
+          totalLosses: { $sum: '$stats.losses' },
+          totalDraws: { $sum: '$stats.draws' },
+          totalMatches: { $sum: '$stats.totalMatches' },
+          agentCount: { $sum: 1 },
+          bestElo: { $max: '$eloRating' },
+        },
+      },
+      { $sort: { totalEarnings: -1 } },
+      { $limit: limit },
+    ]);
+
+    const userIds = userStats.map((entry: any) => entry._id);
+    const users = await this.userModel.find({ _id: { $in: userIds } }).select('username walletAddress').lean();
+    const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
+
+    const ranked = userStats.map((entry: any, index: number) => {
+      const user = userMap.get(entry._id.toString());
+      return {
+        rank: index + 1, userId: entry._id, username: (user as any)?.username ?? 'Unknown',
+        walletAddress: (user as any)?.walletAddress ?? '', totalEarnings: entry.totalEarnings,
+        totalWins: entry.totalWins, totalLosses: entry.totalLosses, totalDraws: entry.totalDraws,
+        totalMatches: entry.totalMatches, agentCount: entry.agentCount, bestElo: entry.bestElo,
+      };
+    });
+
+    return { leaderboard: ranked };
+  }
+
+  async getAgentStats(id: string) {
+    const agent = await this.agentModel.findById(id).select('name eloRating stats gameTypes userId status createdAt').lean() as any;
+    if (!agent) throw new NotFoundException('Agent not found');
+
+    const recentMatches = await this.matchModel.find({
+      $or: [{ 'agents.a.agentId': id }, { 'agents.b.agentId': id }],
+      status: 'completed',
+    }).sort({ endedAt: -1 }).limit(20).select('agents result stakeAmount potAmount gameType endedAt').lean();
+
+    const matchHistory = recentMatches.map((match: any) => {
+      const isAgentA = match.agents.a.agentId.toString() === id;
+      const side = isAgentA ? 'a' : 'b';
+      const opponentSide = isAgentA ? 'b' : 'a';
+      let outcome: 'win' | 'loss' | 'draw';
+      if (!match.result || match.result.winnerId === null) outcome = 'draw';
+      else if (match.result.winnerId.toString() === id) outcome = 'win';
+      else outcome = 'loss';
+
+      return {
+        matchId: match._id, gameType: match.gameType,
+        opponent: { agentId: match.agents[opponentSide].agentId, name: match.agents[opponentSide].name },
+        outcome, eloChange: match.result?.eloChange[side] ?? 0,
+        finalScore: match.result?.finalScore ?? { a: 0, b: 0 },
+        stakeAmount: match.stakeAmount, endedAt: match.endedAt,
+      };
+    });
+
+    const owner = await this.userModel.findById(agent.userId).select('username').lean() as any;
+
+    return {
+      agent: {
+        id: agent._id, name: agent.name, eloRating: agent.eloRating,
+        stats: agent.stats, gameTypes: agent.gameTypes, status: agent.status,
+        owner: { userId: agent.userId, username: owner?.username ?? 'Unknown' },
+        createdAt: agent.createdAt,
+      },
+      recentMatches: matchHistory,
+    };
+  }
+}
