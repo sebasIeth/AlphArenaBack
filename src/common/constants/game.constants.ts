@@ -7,6 +7,7 @@ export const PLATFORM_FEE_PERCENT = 5;
 export const MATCHMAKING_INTERVAL_MS = 2_000;
 export const ELO_MATCH_RANGE = 200;
 export const DEFAULT_ELO = 1200;
+export const USDC_DECIMALS = 6;
 export const BOARD_SIZE = 8;
 
 export const PIECE = {

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { PLATFORM_FEE_PERCENT } from '../common/constants/game.constants';
+import { PLATFORM_FEE_PERCENT, USDC_DECIMALS } from '../common/constants/game.constants';
 import { MatchResultReason, Side } from '../common/types';
 import { Match, Agent } from '../database/schemas';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
@@ -84,7 +84,14 @@ export class ResultHandlerService {
         const potAmount = matchDoc.potAmount;
         const platformFee = Math.floor(potAmount * (PLATFORM_FEE_PERCENT / 100));
         const payoutAmount = potAmount - platformFee;
-        payoutTxHash = await this.settlement.payout(matchId, winnerId, BigInt(payoutAmount));
+        const payoutAmountUsdc = BigInt(payoutAmount) * BigInt(10 ** USDC_DECIMALS);
+
+        const winnerWallet = matchState.agents[winningSide].walletAddress;
+        if (!winnerWallet) {
+          this.logger.error(`No wallet address for winner (side=${winningSide}) in match ${matchId}`);
+        } else {
+          payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountUsdc);
+        }
       } else {
         payoutTxHash = await this.settlement.refund(matchId);
       }
