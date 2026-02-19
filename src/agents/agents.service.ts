@@ -105,18 +105,26 @@ export class AgentsService {
       throw new BadRequestException('Health check is only available for OpenClaw agents');
     }
 
+    return this.pingOpenClaw(agent.openclawUrl, agent.openclawToken, agent.openclawAgentId || 'main');
+  }
+
+  async testOpenClawConnection(openclawUrl: string, openclawToken: string, openclawAgentId: string) {
+    return this.pingOpenClaw(openclawUrl, openclawToken, openclawAgentId);
+  }
+
+  private async pingOpenClaw(openclawUrl: string, openclawToken: string, openclawAgentId: string) {
     const start = Date.now();
     try {
-      const url = `${agent.openclawUrl.replace(/\/$/, '')}/v1/chat/completions`;
+      const url = `${openclawUrl.replace(/\/$/, '')}/v1/chat/completions`;
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${agent.openclawToken}`,
-          'x-openclaw-agent-id': agent.openclawAgentId || 'main',
+          'Authorization': `Bearer ${openclawToken}`,
+          'x-openclaw-agent-id': openclawAgentId,
         },
         body: JSON.stringify({
-          model: `openclaw:${agent.openclawAgentId || 'main'}`,
+          model: `openclaw:${openclawAgentId}`,
           messages: [
             { role: 'system', content: 'Respond: pong' },
             { role: 'user', content: 'ping' },
