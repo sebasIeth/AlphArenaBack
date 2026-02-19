@@ -1,13 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
 import { MoveRequest, MoveResponse } from '../common/types';
+import { OpenClawClientService, OpenClawAgentInfo } from './openclaw-client.service';
+
+export interface AgentInfo {
+  endpointUrl: string;
+  type?: string;
+  openclawUrl?: string;
+  openclawToken?: string;
+  openclawAgentId?: string;
+}
 
 @Injectable()
 export class AgentClientService {
   private readonly logger = new Logger(AgentClientService.name);
   private readonly timeoutMs: number;
 
-  constructor() {
+  constructor(private readonly openclawClient: OpenClawClientService) {
     this.timeoutMs = TURN_TIMEOUT_MS;
   }
 
@@ -58,5 +67,34 @@ export class AgentClientService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  async requestReversiMoveFromOpenClaw(
+    agent: AgentInfo,
+    moveRequest: MoveRequest,
+  ): Promise<MoveResponse> {
+    const openclawAgent: OpenClawAgentInfo = {
+      openclawUrl: agent.openclawUrl!,
+      openclawToken: agent.openclawToken!,
+      openclawAgentId: agent.openclawAgentId || 'main',
+    };
+
+    const result = await this.openclawClient.getReversiMove(openclawAgent, {
+      matchId: moveRequest.matchId,
+      board: moveRequest.board,
+      yourPiece: moveRequest.yourPiece,
+      legalMoves: moveRequest.legalMoves,
+      moveNumber: moveRequest.moveNumber,
+    });
+
+    this.logger.log(
+      `OpenClaw reversi agent responded (source=${result.source}, match=${moveRequest.matchId})`,
+    );
+
+    return result.move as MoveResponse;
+  }
+
+  getOpenClawClient(): OpenClawClientService {
+    return this.openclawClient;
   }
 }

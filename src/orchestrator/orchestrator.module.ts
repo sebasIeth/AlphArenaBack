@@ -9,6 +9,7 @@ import { TurnControllerService } from './turn-controller.service';
 import { MarrakechTurnControllerService } from './marrakech-turn-controller.service';
 import { ResultHandlerService } from './result-handler.service';
 import { AgentClientService } from './agent-client.service';
+import { OpenClawClientService } from './openclaw-client.service';
 import { EventBusService } from './event-bus.service';
 import { ActiveMatchesService } from './active-matches.service';
 
@@ -26,6 +27,7 @@ import { ActiveMatchesService } from './active-matches.service';
   providers: [
     EventBusService,
     ActiveMatchesService,
+    OpenClawClientService,
     AgentClientService,
     TurnControllerService,
     MarrakechTurnControllerService,

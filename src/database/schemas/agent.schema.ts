@@ -32,8 +32,24 @@ export class Agent extends Document {
   @Prop({ required: true })
   name: string;
 
-  @Prop({ required: true })
+  @Prop({
+    type: String,
+    enum: ['http', 'openclaw'],
+    default: 'http',
+  })
+  type: string;
+
+  @Prop({ required: false })
   endpointUrl: string;
+
+  @Prop({ required: false })
+  openclawUrl: string;
+
+  @Prop({ required: false })
+  openclawToken: string;
+
+  @Prop({ default: 'main' })
+  openclawAgentId: string;
 
   @Prop({ default: 1200, index: true })
   eloRating: number;

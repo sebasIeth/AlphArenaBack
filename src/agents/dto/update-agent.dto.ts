@@ -12,6 +12,18 @@ export class UpdateAgentDto {
   endpointUrl?: string;
 
   @IsOptional()
+  @IsUrl({}, { message: 'OpenClaw URL must be a valid URL' })
+  openclawUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  openclawToken?: string;
+
+  @IsOptional()
+  @IsString()
+  openclawAgentId?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one game type is required' })
   @IsIn(['reversi', 'marrakech'], { each: true })

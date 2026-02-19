@@ -70,7 +70,9 @@ export class TurnControllerService {
     const thinkingStart = Date.now();
 
     try {
-      const response = await this.agentClient.requestMove(agent.endpointUrl, moveRequest);
+      const response = agent.type === 'openclaw'
+        ? await this.agentClient.requestReversiMoveFromOpenClaw(agent, moveRequest)
+        : await this.agentClient.requestMove(agent.endpointUrl, moveRequest);
 
       if (matchState.clock) matchState.clock.clearTurn();
 
