@@ -5,8 +5,8 @@ import {
   GameState, Side, Board, Piece,
   MarrakechGameState,
 } from '../common/types';
-import { MAX_TIMEOUTS } from '../common/constants/game.constants';
-import { Match, Agent } from '../database/schemas';
+import { MAX_TIMEOUTS, USDC_DECIMALS } from '../common/constants/game.constants';
+import { Match, Agent, User } from '../database/schemas';
 import { GameEngineService } from '../game-engine/game-engine.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { TurnControllerService } from './turn-controller.service';
@@ -34,6 +34,7 @@ export class MatchManagerService {
   constructor(
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly activeMatches: ActiveMatchesService,
     private readonly turnController: TurnControllerService,
     private readonly marrakechTurnController: MarrakechTurnControllerService,
@@ -188,10 +189,47 @@ export class MatchManagerService {
     const gameType = this.matchGameTypes.get(matchId) ?? 'reversi';
     this.logger.log(`Starting match ${matchId} (${gameType})`);
 
-    // Escrow
+    // Fetch match doc for potAmount and user IDs
+    const matchDoc = await this.matchModel.findById(matchId);
+    if (!matchDoc) {
+      throw new Error(`Match document ${matchId} not found in DB.`);
+    }
+
+    // Resolve wallet addresses for both agents
+    const [userA, userB] = await Promise.all([
+      this.userModel.findById(matchDoc.agents.a.userId),
+      this.userModel.findById(matchDoc.agents.b.userId),
+    ]);
+    const walletA = userA?.walletAddress;
+    const walletB = userB?.walletAddress;
+
+    if (!walletA || !walletB) {
+      this.logger.error(`Missing wallet address for match ${matchId}: A=${walletA}, B=${walletB}`);
+      await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
+      await Promise.all([
+        this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
+        this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
+      ]);
+      this.eventBus.emit('match:error', { matchId, error: 'Missing wallet address for agent owner' });
+      this.activeMatches.removeMatch(matchId);
+      this.marrakechStates.delete(matchId);
+      this.matchGameTypes.delete(matchId);
+      return;
+    }
+
+    // Store wallet addresses in active match state for settlement
+    this.activeMatches.updateMatch(matchId, {
+      agents: {
+        a: { ...matchState.agents.a, walletAddress: walletA },
+        b: { ...matchState.agents.b, walletAddress: walletB },
+      },
+    });
+
+    // Escrow real potAmount in USDC smallest units (6 decimals)
+    const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** USDC_DECIMALS);
     try {
       const escrowTxHash = await this.settlement.escrow(
-        matchId, matchState.agents.a.agentId, matchState.agents.b.agentId, BigInt(0),
+        matchId, walletA, walletB, escrowAmount,
       );
       await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': escrowTxHash });
     } catch (error: unknown) {

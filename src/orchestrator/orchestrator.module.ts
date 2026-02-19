@@ -1,6 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { Match, MatchSchema, Agent, AgentSchema, MoveDoc, MoveSchema } from '../database/schemas';
+import { Match, MatchSchema, Agent, AgentSchema, MoveDoc, MoveSchema, User, UserSchema } from '../database/schemas';
 import { GameEngineModule } from '../game-engine/game-engine.module';
 import { SettlementModule } from '../settlement/settlement.module';
 import { OrchestratorService } from './orchestrator.service';
@@ -18,6 +18,7 @@ import { ActiveMatchesService } from './active-matches.service';
       { name: Match.name, schema: MatchSchema },
       { name: Agent.name, schema: AgentSchema },
       { name: MoveDoc.name, schema: MoveSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     GameEngineModule,
     forwardRef(() => SettlementModule),
