@@ -27,6 +27,11 @@ export class AgentsController {
     return this.agentsService.findById(id, user.userId);
   }
 
+  @Get(':id/health')
+  healthCheck(@CurrentUser() user: AuthPayload, @Param('id') id: string) {
+    return this.agentsService.healthCheck(id, user.userId);
+  }
+
   @Put(':id')
   update(@CurrentUser() user: AuthPayload, @Param('id') id: string, @Body() dto: UpdateAgentDto) {
     return this.agentsService.update(id, user.userId, dto);

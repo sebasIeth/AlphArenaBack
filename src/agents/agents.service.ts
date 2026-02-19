@@ -20,17 +20,29 @@ export class AgentsService {
       throw new ConflictException('You already have an agent with this name');
     }
 
-    const agent = await this.agentModel.create({
+    const agentType = dto.type || 'http';
+
+    const agentData: Record<string, unknown> = {
       userId,
       name: dto.name,
-      endpointUrl: dto.endpointUrl,
+      type: agentType,
       gameTypes: dto.gameTypes,
       eloRating: DEFAULT_ELO,
       status: 'idle',
       stats: { wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0 },
-    });
+    };
 
-    this.logger.log(`Agent created: ${dto.name} by user ${userId}`);
+    if (agentType === 'openclaw') {
+      agentData.openclawUrl = dto.openclawUrl;
+      agentData.openclawToken = dto.openclawToken;
+      agentData.openclawAgentId = dto.openclawAgentId || 'main';
+    } else {
+      agentData.endpointUrl = dto.endpointUrl;
+    }
+
+    const agent = await this.agentModel.create(agentData);
+
+    this.logger.log(`Agent created: ${dto.name} (type=${agentType}) by user ${userId}`);
     return { agent };
   }
 
@@ -61,6 +73,9 @@ export class AgentsService {
 
     if (dto.name !== undefined) agent.name = dto.name;
     if (dto.endpointUrl !== undefined) agent.endpointUrl = dto.endpointUrl;
+    if (dto.openclawUrl !== undefined) agent.openclawUrl = dto.openclawUrl;
+    if (dto.openclawToken !== undefined) agent.openclawToken = dto.openclawToken;
+    if (dto.openclawAgentId !== undefined) agent.openclawAgentId = dto.openclawAgentId;
     if (dto.gameTypes !== undefined) agent.gameTypes = dto.gameTypes;
 
     await agent.save();
@@ -79,5 +94,53 @@ export class AgentsService {
     await agent.save();
     this.logger.log(`Agent disabled: ${id}`);
     return { message: 'Agent disabled successfully', agent };
+  }
+
+  async healthCheck(id: string, userId: string) {
+    const agent = await this.agentModel.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
+
+    if (agent.type !== 'openclaw') {
+      throw new BadRequestException('Health check is only available for OpenClaw agents');
+    }
+
+    const start = Date.now();
+    try {
+      const url = `${agent.openclawUrl.replace(/\/$/, '')}/v1/chat/completions`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${agent.openclawToken}`,
+          'x-openclaw-agent-id': agent.openclawAgentId || 'main',
+        },
+        body: JSON.stringify({
+          model: `openclaw:${agent.openclawAgentId || 'main'}`,
+          messages: [
+            { role: 'system', content: 'Respond: pong' },
+            { role: 'user', content: 'ping' },
+          ],
+          temperature: 0,
+          max_tokens: 10,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      const latencyMs = Date.now() - start;
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => 'unknown');
+        return { ok: false, latencyMs, error: `HTTP ${response.status}: ${body}` };
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+      return { ok: true, latencyMs, response: content.substring(0, 50) };
+    } catch (err) {
+      const latencyMs = Date.now() - start;
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, latencyMs, error: message };
+    }
   }
 }

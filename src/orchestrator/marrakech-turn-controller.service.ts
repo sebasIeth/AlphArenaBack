@@ -63,7 +63,7 @@ export class MarrakechTurnControllerService {
     const validDirs = marrakech.getValidDirections(state.assam.direction);
     const orientResponse = await this.requestAction(
       agent.endpointUrl, matchId, 'orient', state,
-      { directions: validDirs }, mkState.currentPlayerIndex, matchState,
+      { directions: validDirs }, mkState.currentPlayerIndex, matchState, agent,
     );
 
     if (!orientResponse) return this.handleTimeout(matchState, state, currentSide);
@@ -81,7 +81,7 @@ export class MarrakechTurnControllerService {
       const borderOptions = state.borderChoiceInfo.options;
       const borderResponse = await this.requestAction(
         agent.endpointUrl, matchId, 'borderChoice', state,
-        { borderOptions }, mkState.currentPlayerIndex, matchState,
+        { borderOptions }, mkState.currentPlayerIndex, matchState, agent,
       );
 
       if (!borderResponse) {
@@ -111,7 +111,7 @@ export class MarrakechTurnControllerService {
     } else {
       const placeResponse = await this.requestAction(
         agent.endpointUrl, matchId, 'place', state,
-        { placements: state.validPlacements }, mkState.currentPlayerIndex, matchState,
+        { placements: state.validPlacements }, mkState.currentPlayerIndex, matchState, agent,
       );
 
       if (!placeResponse) {
@@ -165,15 +165,33 @@ export class MarrakechTurnControllerService {
     validActions: MarrakechMoveRequest['validActions'],
     playerIndex: number,
     matchState: ActiveMatchState,
+    agent?: { type?: string; openclawUrl?: string; openclawToken?: string; openclawAgentId?: string },
   ): Promise<MarrakechMoveResponse | null> {
+    if (matchState.clock) matchState.clock.startTurn();
+
+    // Route OpenClaw agents through the OpenClaw client
+    if (agent?.type === 'openclaw' && agent.openclawUrl && agent.openclawToken) {
+      try {
+        const openclawClient = this.agentClient.getOpenClawClient();
+        const response = await openclawClient.getMarrakechMove(
+          { openclawUrl: agent.openclawUrl, openclawToken: agent.openclawToken, openclawAgentId: agent.openclawAgentId || 'main' },
+          matchId, phase, state, validActions, playerIndex,
+        );
+        if (matchState.clock) matchState.clock.clearTurn();
+        return response;
+      } catch {
+        if (matchState.clock) matchState.clock.clearTurn();
+        return null;
+      }
+    }
+
+    // Standard HTTP agent
     const timeRemainingMs = matchState.clock ? matchState.clock.getTimeRemainingMs() : 30_000;
 
     const request: MarrakechMoveRequest = {
       matchId, gameType: 'marrakech', phase, state, validActions,
       turnNumber: state.turnNumber, timeRemainingMs, yourPlayerIndex: playerIndex,
     };
-
-    if (matchState.clock) matchState.clock.startTurn();
 
     try {
       const response = await this.agentClient.requestMove(

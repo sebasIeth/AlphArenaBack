@@ -22,6 +22,10 @@ export interface MatchAgentInput {
   name: string;
   endpointUrl: string;
   eloRating: number;
+  type?: string;
+  openclawUrl?: string;
+  openclawToken?: string;
+  openclawAgentId?: string;
 }
 
 @Injectable()
@@ -88,8 +92,8 @@ export class MatchManagerService {
       matchId, gameState: initialState, clock: null, turnDeadline: 0,
       timeouts: { a: 0, b: 0 }, status: 'starting',
       agents: {
-        a: { agentId: agentA.agentId, endpointUrl: agentA.endpointUrl, piece: 'B' },
-        b: { agentId: agentB.agentId, endpointUrl: agentB.endpointUrl, piece: 'W' },
+        a: { agentId: agentA.agentId, endpointUrl: agentA.endpointUrl, piece: 'B', type: agentA.type, openclawUrl: agentA.openclawUrl, openclawToken: agentA.openclawToken, openclawAgentId: agentA.openclawAgentId },
+        b: { agentId: agentB.agentId, endpointUrl: agentB.endpointUrl, piece: 'W', type: agentB.type, openclawUrl: agentB.openclawUrl, openclawToken: agentB.openclawToken, openclawAgentId: agentB.openclawAgentId },
       },
       startedAt: Date.now(),
     };
@@ -151,8 +155,8 @@ export class MatchManagerService {
       matchId, gameState: compatState, clock: null, turnDeadline: 0,
       timeouts: { a: 0, b: 0 }, status: 'starting',
       agents: {
-        a: { agentId: agentA.agentId, endpointUrl: agentA.endpointUrl, piece: 'B' },
-        b: { agentId: agentB.agentId, endpointUrl: agentB.endpointUrl, piece: 'W' },
+        a: { agentId: agentA.agentId, endpointUrl: agentA.endpointUrl, piece: 'B', type: agentA.type, openclawUrl: agentA.openclawUrl, openclawToken: agentA.openclawToken, openclawAgentId: agentA.openclawAgentId },
+        b: { agentId: agentB.agentId, endpointUrl: agentB.endpointUrl, piece: 'W', type: agentB.type, openclawUrl: agentB.openclawUrl, openclawToken: agentB.openclawToken, openclawAgentId: agentB.openclawAgentId },
       },
       startedAt: Date.now(),
     };

@@ -17,8 +17,8 @@ export interface ActiveMatchState {
   timeouts: { a: number; b: number };
   status: 'starting' | 'active';
   agents: {
-    a: { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string };
-    b: { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string };
+    a: { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string; type?: string; openclawUrl?: string; openclawToken?: string; openclawAgentId?: string };
+    b: { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string; type?: string; openclawUrl?: string; openclawToken?: string; openclawAgentId?: string };
   };
   startedAt: number;
 }
