@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, HttpCode } from '@nestjs/common';
+import { IsString, MinLength, IsUrl, IsOptional } from 'class-validator';
 import { AgentsService } from './agents.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
@@ -6,10 +7,32 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
 
+class TestConnectionDto {
+  @IsUrl({}, { message: 'OpenClaw URL must be a valid URL' })
+  openclawUrl: string;
+
+  @IsString()
+  @MinLength(1)
+  openclawToken: string;
+
+  @IsOptional()
+  @IsString()
+  openclawAgentId?: string;
+}
+
 @Controller('agents')
 @UseGuards(JwtAuthGuard)
 export class AgentsController {
   constructor(private readonly agentsService: AgentsService) {}
+
+  @Post('test-connection')
+  testConnection(@Body() dto: TestConnectionDto) {
+    return this.agentsService.testOpenClawConnection(
+      dto.openclawUrl,
+      dto.openclawToken,
+      dto.openclawAgentId || 'main',
+    );
+  }
 
   @Post()
   @HttpCode(201)
