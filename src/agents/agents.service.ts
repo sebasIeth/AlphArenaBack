@@ -112,6 +112,38 @@ export class AgentsService {
     return this.pingOpenClaw(openclawUrl, openclawToken, openclawAgentId);
   }
 
+  async testOpenClawWebhook(openclawUrl: string, hookToken: string) {
+    const start = Date.now();
+    try {
+      const url = `${openclawUrl.replace(/\/$/, '')}/hooks/wake`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${hookToken}`,
+        },
+        body: JSON.stringify({
+          text: 'AlphArena health check',
+          mode: 'now',
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      const latencyMs = Date.now() - start;
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => 'unknown');
+        return { ok: false, latencyMs, error: `HTTP ${response.status}: ${body}` };
+      }
+
+      return { ok: true, latencyMs };
+    } catch (err) {
+      const latencyMs = Date.now() - start;
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, latencyMs, error: message };
+    }
+  }
+
   private async pingOpenClaw(openclawUrl: string, openclawToken: string, openclawAgentId: string) {
     const start = Date.now();
     try {
