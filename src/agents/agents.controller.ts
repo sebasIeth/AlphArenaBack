@@ -20,6 +20,15 @@ class TestConnectionDto {
   openclawAgentId?: string;
 }
 
+class TestWebhookDto {
+  @IsUrl({}, { message: 'OpenClaw URL must be a valid URL' })
+  openclawUrl: string;
+
+  @IsString()
+  @MinLength(1)
+  hookToken: string;
+}
+
 @Controller('agents')
 @UseGuards(JwtAuthGuard)
 export class AgentsController {
@@ -31,6 +40,14 @@ export class AgentsController {
       dto.openclawUrl,
       dto.openclawToken,
       dto.openclawAgentId || 'main',
+    );
+  }
+
+  @Post('test-webhook')
+  testWebhook(@Body() dto: TestWebhookDto) {
+    return this.agentsService.testOpenClawWebhook(
+      dto.openclawUrl,
+      dto.hookToken,
     );
   }
 
