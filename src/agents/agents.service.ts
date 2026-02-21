@@ -126,7 +126,7 @@ export class AgentsService {
           text: 'AlphArena health check',
           mode: 'now',
         }),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(30000),
       });
 
       const latencyMs = Date.now() - start;
