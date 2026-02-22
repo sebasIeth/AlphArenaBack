@@ -6,7 +6,7 @@ import {
   MarrakechDirection,
   MarrakechCarpetPlacement,
 } from '../common/types';
-import { OpenClawWsService } from '../openclaw-ws';
+import { OpenClawHttpService } from '../openclaw-ws';
 
 export interface OpenClawAgentInfo {
   openclawUrl: string;
@@ -55,9 +55,9 @@ function extractJSON(text: string): Record<string, unknown> | null {
 export class OpenClawClientService {
   private readonly logger = new Logger(OpenClawClientService.name);
 
-  constructor(private readonly openclawWs: OpenClawWsService) {}
+  constructor(private readonly openclawHttp: OpenClawHttpService) {}
 
-  // ─── OpenClaw WebSocket RPC Call ──────────────────────────────────────────
+  // ─── OpenClaw HTTP Call ──────────────────────────────────────────
 
   private async callOpenClaw(
     agent: OpenClawAgentInfo,
@@ -65,23 +65,14 @@ export class OpenClawClientService {
     userPrompt: string,
   ): Promise<string> {
     const message = `${systemPrompt}\n\n${userPrompt}`;
+    const agentId = agent.openclawAgentId || 'main';
 
-    const result = await this.openclawWs.sendAgentMessage(
+    return this.openclawHttp.sendAgentMessage(
       agent.openclawUrl,
       agent.openclawToken,
-      {
-        message,
-        agentId: agent.openclawAgentId || 'main',
-      },
+      message,
+      agentId,
     );
-
-    // Extract text content from the RPC result
-    if (typeof result === 'string') return result;
-    if (result.content) return String(result.content);
-    if (result.message) return String(result.message);
-    if (result.text) return String(result.text);
-    if (result.result) return typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
-    return JSON.stringify(result);
   }
 
   // ─── Reversi ──────────────────────────────────────────────────────────
