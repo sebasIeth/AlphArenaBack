@@ -8,29 +8,23 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
 
 class TestConnectionDto {
-  @IsUrl({}, { message: 'OpenClaw bridge URL must be a valid URL' })
+  @IsString()
+  @MinLength(1, { message: 'OpenClaw URL is required' })
   openclawUrl: string;
 
-  @IsOptional()
   @IsString()
-  openclawToken?: string;
-
-  @IsOptional()
-  @IsString()
-  openclawAgentId?: string;
+  @MinLength(1, { message: 'OpenClaw token is required' })
+  openclawToken: string;
 }
 
 class TestWebhookDto {
-  @IsUrl({}, { message: 'OpenClaw bridge URL must be a valid URL' })
+  @IsString()
+  @MinLength(1, { message: 'OpenClaw URL is required' })
   openclawUrl: string;
 
-  @IsOptional()
   @IsString()
-  hookToken?: string;
-
-  @IsOptional()
-  @IsString()
-  openclawToken?: string;
+  @MinLength(1, { message: 'OpenClaw token is required' })
+  openclawToken: string;
 }
 
 @Controller('agents')
@@ -42,17 +36,15 @@ export class AgentsController {
   testConnection(@Body() dto: TestConnectionDto) {
     return this.agentsService.testOpenClawConnection(
       dto.openclawUrl,
-      dto.openclawToken || '',
-      dto.openclawAgentId || 'main',
+      dto.openclawToken,
     );
   }
 
   @Post('test-webhook')
   testWebhook(@Body() dto: TestWebhookDto) {
-    const token = dto.hookToken || dto.openclawToken || '';
     return this.agentsService.testOpenClawWebhook(
       dto.openclawUrl,
-      token,
+      dto.openclawToken,
     );
   }
 

@@ -6,6 +6,7 @@ import {
   MarrakechDirection,
   MarrakechCarpetPlacement,
 } from '../common/types';
+import { OpenClawWsService } from '../openclaw-ws';
 
 export interface OpenClawAgentInfo {
   openclawUrl: string;
@@ -37,16 +38,6 @@ const REVERSI_SYSTEM = `You are a competitive Reversi AI playing in a tournament
 STRATEGY: Corners are most valuable, then edges, then center. Avoid cells diagonally adjacent to empty corners.
 RESPOND WITH ONLY A JSON OBJECT. No text, no markdown, no explanation.`;
 
-// ─── Phase Detection ────────────────────────────────────────────────────────
-
-function detectPhase(validActions: MarrakechValidActions): string {
-  if (!validActions) return 'unknown';
-  if (validActions.directions && validActions.directions.length > 0) return 'orient';
-  if (validActions.borderOptions && validActions.borderOptions.length > 0) return 'borderChoice';
-  if (validActions.placements !== undefined) return 'place';
-  return 'unknown';
-}
-
 // ─── JSON Extraction ────────────────────────────────────────────────────────
 
 function extractJSON(text: string): Record<string, unknown> | null {
@@ -64,51 +55,33 @@ function extractJSON(text: string): Record<string, unknown> | null {
 export class OpenClawClientService {
   private readonly logger = new Logger(OpenClawClientService.name);
 
-  // ─── OpenClaw API Call (via bridge server /api/agent) ────────────────────
+  constructor(private readonly openclawWs: OpenClawWsService) {}
+
+  // ─── OpenClaw WebSocket RPC Call ──────────────────────────────────────────
 
   private async callOpenClaw(
     agent: OpenClawAgentInfo,
     systemPrompt: string,
     userPrompt: string,
-    _matchId: string,
   ): Promise<string> {
-    const baseUrl = agent.openclawUrl.replace(/\/$/, '');
-    const url = `${baseUrl}/api/agent`;
-
     const message = `${systemPrompt}\n\n${userPrompt}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (agent.openclawToken) {
-      headers['Authorization'] = `Bearer ${agent.openclawToken}`;
-    }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
+    const result = await this.openclawWs.sendAgentMessage(
+      agent.openclawUrl,
+      agent.openclawToken,
+      {
         message,
         agentId: agent.openclawAgentId || 'main',
-      }),
-      signal: AbortSignal.timeout(25000),
-    });
+      },
+    );
 
-    if (!response.ok) {
-      const err = await response.text().catch(() => 'unknown');
-      throw new Error(`OpenClaw bridge ${response.status}: ${err}`);
-    }
-
-    const data = await response.json();
-
-    // Extract text content from the bridge response
-    // The bridge returns the RPC result which may have different formats
-    if (typeof data === 'string') return data;
-    if (data.content) return String(data.content);
-    if (data.message) return String(data.message);
-    if (data.text) return String(data.text);
-    if (data.result) return typeof data.result === 'string' ? data.result : JSON.stringify(data.result);
-    if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;
-    return JSON.stringify(data);
+    // Extract text content from the RPC result
+    if (typeof result === 'string') return result;
+    if (result.content) return String(result.content);
+    if (result.message) return String(result.message);
+    if (result.text) return String(result.text);
+    if (result.result) return typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+    return JSON.stringify(result);
   }
 
   // ─── Reversi ──────────────────────────────────────────────────────────
@@ -128,7 +101,7 @@ export class OpenClawClientService {
     const userPrompt = `Move #${moveNumber}. You: ${yourPiece}. Legal: ${JSON.stringify(legalMoves)}\nBoard: ${JSON.stringify(board)}\n\nRespond: {"move":[row,col]}`;
 
     try {
-      const raw = await this.callOpenClaw(agent, REVERSI_SYSTEM, userPrompt, matchId);
+      const raw = await this.callOpenClaw(agent, REVERSI_SYSTEM, userPrompt);
       const parsed = extractJSON(raw);
 
       if (parsed?.move && Array.isArray(parsed.move)) {
@@ -161,7 +134,7 @@ export class OpenClawClientService {
     const userPrompt = this.buildMarrakechPrompt(phase, state, validActions, playerIndex);
 
     try {
-      const raw = await this.callOpenClaw(agent, MARRAKECH_SYSTEM, userPrompt, matchId);
+      const raw = await this.callOpenClaw(agent, MARRAKECH_SYSTEM, userPrompt);
       const parsed = extractJSON(raw);
       if (!parsed) {
         this.logger.warn(`OpenClaw marrakech: failed to parse JSON. Raw: ${raw?.substring(0, 100)}`);
