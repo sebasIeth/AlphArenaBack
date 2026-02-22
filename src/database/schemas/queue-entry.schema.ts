@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
-@Schema({ collection: 'queue_entries' })
+@Schema({ collection: 'queue_entries', toJSON: { virtuals: true }, toObject: { virtuals: true } })
 export class QueueEntry extends Document {
   @Prop({ type: Types.ObjectId, ref: 'Agent', required: true, unique: true })
   agentId: Types.ObjectId;
