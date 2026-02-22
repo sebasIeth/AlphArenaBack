@@ -5,12 +5,16 @@ import { Agent } from '../database/schemas';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { DEFAULT_ELO } from '../common/constants/game.constants';
+import { OpenClawWsService } from '../openclaw-ws';
 
 @Injectable()
 export class AgentsService {
   private readonly logger = new Logger(AgentsService.name);
 
-  constructor(@InjectModel(Agent.name) private readonly agentModel: Model<Agent>) {}
+  constructor(
+    @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    private readonly openclawWs: OpenClawWsService,
+  ) {}
 
   async create(userId: string, dto: CreateAgentDto) {
     const existing = await this.agentModel.findOne({
@@ -105,80 +109,14 @@ export class AgentsService {
       throw new BadRequestException('Health check is only available for OpenClaw agents');
     }
 
-    return this.pingOpenClaw(agent.openclawUrl, agent.openclawToken, agent.openclawAgentId || 'main');
+    return this.openclawWs.testHealth(agent.openclawUrl, agent.openclawToken);
   }
 
-  async testOpenClawConnection(openclawUrl: string, openclawToken: string, openclawAgentId: string) {
-    return this.pingOpenClaw(openclawUrl, openclawToken, openclawAgentId);
+  async testOpenClawConnection(openclawUrl: string, openclawToken: string) {
+    return this.openclawWs.testHealth(openclawUrl, openclawToken);
   }
 
-  async testOpenClawWebhook(openclawUrl: string, hookToken: string) {
-    const start = Date.now();
-    try {
-      const baseUrl = openclawUrl.replace(/\/$/, '');
-      const url = `${baseUrl}/api/wake`;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (hookToken) {
-        headers['Authorization'] = `Bearer ${hookToken}`;
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          text: 'AlphArena health check',
-          mode: 'now',
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
-
-      const latencyMs = Date.now() - start;
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => 'unknown');
-        return { ok: false, latencyMs, error: `HTTP ${response.status}: ${body}` };
-      }
-
-      const data = await response.json().catch(() => ({}));
-      return { ok: true, latencyMs, response: JSON.stringify(data).substring(0, 100) };
-    } catch (err) {
-      const latencyMs = Date.now() - start;
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, latencyMs, error: message };
-    }
-  }
-
-  private async pingOpenClaw(openclawUrl: string, openclawToken: string, _openclawAgentId: string) {
-    const start = Date.now();
-    try {
-      const baseUrl = openclawUrl.replace(/\/$/, '');
-      const url = `${baseUrl}/api/health`;
-      const headers: Record<string, string> = {};
-      if (openclawToken) {
-        headers['Authorization'] = `Bearer ${openclawToken}`;
-      }
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-        signal: AbortSignal.timeout(10000),
-      });
-
-      const latencyMs = Date.now() - start;
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => 'unknown');
-        return { ok: false, latencyMs, error: `HTTP ${response.status}: ${body}` };
-      }
-
-      const data = await response.json().catch(() => ({}));
-      return { ok: true, latencyMs, response: JSON.stringify(data).substring(0, 50) };
-    } catch (err) {
-      const latencyMs = Date.now() - start;
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, latencyMs, error: message };
-    }
+  async testOpenClawWebhook(openclawUrl: string, openclawToken: string) {
+    return this.openclawWs.testWake(openclawUrl, openclawToken);
   }
 }

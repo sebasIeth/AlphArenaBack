@@ -15,6 +15,7 @@ import { SettlementModule } from './settlement/settlement.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { WorkerModule } from './worker/worker.module';
 import { GameEngineModule } from './game-engine/game-engine.module';
+import { OpenClawWsModule } from './openclaw-ws';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -36,6 +37,7 @@ import { HealthController } from './health.controller';
       limit: 20,
     }]),
     ScheduleModule.forRoot(),
+    OpenClawWsModule,
     AuthModule,
     AgentsModule,
     MatchesModule,
