@@ -42,7 +42,7 @@ export class MatchResultSubDoc {
 
 export const MatchResultSubDocSchema = SchemaFactory.createForClass(MatchResultSubDoc);
 
-@Schema({ timestamps: true, collection: 'matches' })
+@Schema({ timestamps: true, collection: 'matches', toJSON: { virtuals: true }, toObject: { virtuals: true } })
 export class Match extends Document {
   @Prop({ required: true })
   gameType: string;

@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
-@Schema({ timestamps: true, collection: 'transactions' })
+@Schema({ timestamps: true, collection: 'transactions', toJSON: { virtuals: true }, toObject: { virtuals: true } })
 export class Transaction extends Document {
   @Prop({ type: Types.ObjectId, ref: 'Match', required: true, index: true })
   matchId: Types.ObjectId;
