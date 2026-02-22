@@ -18,9 +18,8 @@ export class CreateAgentDto {
   @IsUrl({}, { message: 'OpenClaw URL must be a valid URL' })
   openclawUrl?: string;
 
-  @ValidateIf((o) => o.type === 'openclaw')
-  @IsString({ message: 'OpenClaw gateway token is required' })
-  @MinLength(1, { message: 'OpenClaw gateway token is required' })
+  @IsOptional()
+  @IsString()
   openclawToken?: string;
 
   @IsOptional()

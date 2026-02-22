@@ -115,13 +115,18 @@ export class AgentsService {
   async testOpenClawWebhook(openclawUrl: string, hookToken: string) {
     const start = Date.now();
     try {
-      const url = `${openclawUrl.replace(/\/$/, '')}/hooks/wake`;
+      const baseUrl = openclawUrl.replace(/\/$/, '');
+      const url = `${baseUrl}/api/wake`;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (hookToken) {
+        headers['Authorization'] = `Bearer ${hookToken}`;
+      }
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${hookToken}`,
-        },
+        headers,
         body: JSON.stringify({
           text: 'AlphArena health check',
           mode: 'now',
@@ -136,7 +141,8 @@ export class AgentsService {
         return { ok: false, latencyMs, error: `HTTP ${response.status}: ${body}` };
       }
 
-      return { ok: true, latencyMs };
+      const data = await response.json().catch(() => ({}));
+      return { ok: true, latencyMs, response: JSON.stringify(data).substring(0, 100) };
     } catch (err) {
       const latencyMs = Date.now() - start;
       const message = err instanceof Error ? err.message : String(err);
@@ -144,26 +150,19 @@ export class AgentsService {
     }
   }
 
-  private async pingOpenClaw(openclawUrl: string, openclawToken: string, openclawAgentId: string) {
+  private async pingOpenClaw(openclawUrl: string, openclawToken: string, _openclawAgentId: string) {
     const start = Date.now();
     try {
-      const url = `${openclawUrl.replace(/\/$/, '')}/v1/chat/completions`;
+      const baseUrl = openclawUrl.replace(/\/$/, '');
+      const url = `${baseUrl}/api/health`;
+      const headers: Record<string, string> = {};
+      if (openclawToken) {
+        headers['Authorization'] = `Bearer ${openclawToken}`;
+      }
+
       const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openclawToken}`,
-          'x-openclaw-agent-id': openclawAgentId,
-        },
-        body: JSON.stringify({
-          model: `openclaw:${openclawAgentId}`,
-          messages: [
-            { role: 'system', content: 'Respond: pong' },
-            { role: 'user', content: 'ping' },
-          ],
-          temperature: 0,
-          max_tokens: 10,
-        }),
+        method: 'GET',
+        headers,
         signal: AbortSignal.timeout(10000),
       });
 
@@ -174,9 +173,8 @@ export class AgentsService {
         return { ok: false, latencyMs, error: `HTTP ${response.status}: ${body}` };
       }
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || '';
-      return { ok: true, latencyMs, response: content.substring(0, 50) };
+      const data = await response.json().catch(() => ({}));
+      return { ok: true, latencyMs, response: JSON.stringify(data).substring(0, 50) };
     } catch (err) {
       const latencyMs = Date.now() - start;
       const message = err instanceof Error ? err.message : String(err);

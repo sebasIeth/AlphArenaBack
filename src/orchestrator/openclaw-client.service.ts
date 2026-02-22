@@ -64,43 +64,51 @@ function extractJSON(text: string): Record<string, unknown> | null {
 export class OpenClawClientService {
   private readonly logger = new Logger(OpenClawClientService.name);
 
-  // ─── OpenClaw API Call ──────────────────────────────────────────────────
+  // ─── OpenClaw API Call (via bridge server /api/agent) ────────────────────
 
   private async callOpenClaw(
     agent: OpenClawAgentInfo,
     systemPrompt: string,
     userPrompt: string,
-    matchId: string,
+    _matchId: string,
   ): Promise<string> {
-    const url = `${agent.openclawUrl.replace(/\/$/, '')}/v1/chat/completions`;
+    const baseUrl = agent.openclawUrl.replace(/\/$/, '');
+    const url = `${baseUrl}/api/agent`;
+
+    const message = `${systemPrompt}\n\n${userPrompt}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (agent.openclawToken) {
+      headers['Authorization'] = `Bearer ${agent.openclawToken}`;
+    }
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${agent.openclawToken}`,
-        'x-openclaw-agent-id': agent.openclawAgentId,
-      },
+      headers,
       body: JSON.stringify({
-        model: `openclaw:${agent.openclawAgentId}`,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 150,
-        user: `alpharena-${matchId}`,
+        message,
+        agentId: agent.openclawAgentId || 'main',
       }),
       signal: AbortSignal.timeout(25000),
     });
 
     if (!response.ok) {
       const err = await response.text().catch(() => 'unknown');
-      throw new Error(`OpenClaw ${response.status}: ${err}`);
+      throw new Error(`OpenClaw bridge ${response.status}: ${err}`);
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
+
+    // Extract text content from the bridge response
+    // The bridge returns the RPC result which may have different formats
+    if (typeof data === 'string') return data;
+    if (data.content) return String(data.content);
+    if (data.message) return String(data.message);
+    if (data.text) return String(data.text);
+    if (data.result) return typeof data.result === 'string' ? data.result : JSON.stringify(data.result);
+    if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;
+    return JSON.stringify(data);
   }
 
   // ─── Reversi ──────────────────────────────────────────────────────────
