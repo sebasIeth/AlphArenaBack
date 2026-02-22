@@ -119,4 +119,23 @@ export class AgentsService {
   async testOpenClawWebhook(openclawUrl: string, openclawToken: string) {
     return this.openclawHttp.testWake(openclawUrl, openclawToken);
   }
+
+  async chatWithAgent(id: string, userId: string, message: string) {
+    const agent = await this.agentModel.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
+
+    if (agent.type !== 'openclaw') {
+      throw new BadRequestException('Chat is only available for OpenClaw agents');
+    }
+
+    const reply = await this.openclawHttp.sendAgentMessage(
+      agent.openclawUrl,
+      agent.openclawToken,
+      message,
+      agent.openclawAgentId,
+    );
+
+    return { reply };
+  }
 }
