@@ -159,6 +159,11 @@ export class OpenClawHttpService implements OnModuleDestroy {
       });
       const latencyMs = Date.now() - start;
 
+      // Detect HTML responses (OpenClaw still starting)
+      if (typeof result.data === 'string' && /^\s*<!DOCTYPE|^\s*<html/i.test(result.data)) {
+        return { ok: false, latencyMs, error: 'OpenClaw instance is still starting up' };
+      }
+
       if (result.status >= 200 && result.status < 300) {
         const respStr = typeof result.data === 'string' ? result.data : JSON.stringify(result.data);
         return { ok: true, latencyMs, response: respStr.substring(0, 100) };
@@ -195,6 +200,11 @@ export class OpenClawHttpService implements OnModuleDestroy {
       body,
       timeoutMs: 55000,
     });
+
+    // Detect HTML responses (OpenClaw still starting / not ready)
+    if (typeof result.data === 'string' && /^\s*<!DOCTYPE|^\s*<html/i.test(result.data)) {
+      throw new Error('OpenClaw instance is still starting up. Please wait a moment and try again.');
+    }
 
     if (result.status >= 200 && result.status < 300) {
       if (typeof result.data === 'string') return result.data;
