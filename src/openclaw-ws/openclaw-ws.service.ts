@@ -90,12 +90,21 @@ export class OpenClawWsService implements OnModuleDestroy {
     }
   }
 
+  // ── URL Conversion ──
+
+  private toWsUrl(httpUrl: string): string {
+    return httpUrl
+      .replace(/^https:\/\//i, 'wss://')
+      .replace(/^http:\/\//i, 'ws://');
+  }
+
   // ── Public API for tests (short-lived connections) ──
 
-  async testWake(url: string, token: string): Promise<{ ok: boolean; latencyMs: number; response?: string; error?: string }> {
+  async testWake(httpUrl: string, token: string): Promise<{ ok: boolean; latencyMs: number; response?: string; error?: string }> {
+    const wsUrl = this.toWsUrl(httpUrl);
     const start = Date.now();
     try {
-      const result = await this.withTempClient(url, token, (client) =>
+      const result = await this.withTempClient(wsUrl, token, (client) =>
         client.wake({ text: 'AlphArena health check', mode: 'now' }),
       );
       const latencyMs = Date.now() - start;
@@ -107,10 +116,11 @@ export class OpenClawWsService implements OnModuleDestroy {
     }
   }
 
-  async testHealth(url: string, token: string): Promise<{ ok: boolean; latencyMs: number; response?: string; error?: string }> {
+  async testHealth(httpUrl: string, token: string): Promise<{ ok: boolean; latencyMs: number; response?: string; error?: string }> {
+    const wsUrl = this.toWsUrl(httpUrl);
     const start = Date.now();
     try {
-      const result = await this.withTempClient(url, token, (client) =>
+      const result = await this.withTempClient(wsUrl, token, (client) =>
         client.health(),
       );
       const latencyMs = Date.now() - start;
@@ -124,21 +134,47 @@ export class OpenClawWsService implements OnModuleDestroy {
 
   // ── Public API for game moves (persistent connections) ──
 
+  async sendAgentChat(
+    httpUrl: string,
+    token: string,
+    message: string,
+    agentId?: string,
+  ): Promise<string> {
+    const wsUrl = this.toWsUrl(httpUrl);
+    const params: AgentParams = { message };
+    if (agentId) params.agentId = agentId;
+
+    const client = await this.getOrCreateClient(wsUrl, token);
+    const result = await client.agentAndWait(params);
+
+    // Extract text from assistant stream event: { stream: "assistant", data: { text: "..." } }
+    const data = result.data as Record<string, unknown> | undefined;
+    if (data?.text && typeof data.text === 'string') return data.text;
+
+    // Fallbacks for other possible shapes
+    if (typeof result.text === 'string') return result.text;
+    if (typeof result.content === 'string') return result.content;
+    if (typeof result.result === 'string') return result.result;
+    return JSON.stringify(result);
+  }
+
   async sendAgentMessage(
-    url: string,
+    httpUrl: string,
     token: string,
     params: AgentParams,
   ): Promise<Record<string, unknown>> {
-    const client = await this.getOrCreateClient(url, token);
-    return client.agent(params);
+    const wsUrl = this.toWsUrl(httpUrl);
+    const client = await this.getOrCreateClient(wsUrl, token);
+    return client.agentAndWait(params);
   }
 
   async sendWake(
-    url: string,
+    httpUrl: string,
     token: string,
     params: WakeParams,
   ): Promise<Record<string, unknown>> {
-    const client = await this.getOrCreateClient(url, token);
+    const wsUrl = this.toWsUrl(httpUrl);
+    const client = await this.getOrCreateClient(wsUrl, token);
     return client.wake(params);
   }
 }

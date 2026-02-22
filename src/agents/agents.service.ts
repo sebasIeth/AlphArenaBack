@@ -5,7 +5,7 @@ import { Agent } from '../database/schemas';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { DEFAULT_ELO } from '../common/constants/game.constants';
-import { OpenClawHttpService } from '../openclaw-ws';
+import { OpenClawWsService } from '../openclaw-ws';
 
 @Injectable()
 export class AgentsService {
@@ -13,7 +13,7 @@ export class AgentsService {
 
   constructor(
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
-    private readonly openclawHttp: OpenClawHttpService,
+    private readonly openclawWs: OpenClawWsService,
   ) {}
 
   async create(userId: string, dto: CreateAgentDto) {
@@ -109,15 +109,15 @@ export class AgentsService {
       throw new BadRequestException('Health check is only available for OpenClaw agents');
     }
 
-    return this.openclawHttp.testHealth(agent.openclawUrl, agent.openclawToken);
+    return this.openclawWs.testHealth(agent.openclawUrl, agent.openclawToken);
   }
 
   async testOpenClawConnection(openclawUrl: string, openclawToken: string) {
-    return this.openclawHttp.testHealth(openclawUrl, openclawToken);
+    return this.openclawWs.testHealth(openclawUrl, openclawToken);
   }
 
   async testOpenClawWebhook(openclawUrl: string, openclawToken: string) {
-    return this.openclawHttp.testWake(openclawUrl, openclawToken);
+    return this.openclawWs.testWake(openclawUrl, openclawToken);
   }
 
   async chatWithAgent(id: string, userId: string, message: string) {
@@ -129,7 +129,7 @@ export class AgentsService {
       throw new BadRequestException('Chat is only available for OpenClaw agents');
     }
 
-    const reply = await this.openclawHttp.sendAgentMessage(
+    const reply = await this.openclawWs.sendAgentChat(
       agent.openclawUrl,
       agent.openclawToken,
       message,
