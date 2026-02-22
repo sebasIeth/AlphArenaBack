@@ -27,6 +27,12 @@ class TestWebhookDto {
   openclawToken: string;
 }
 
+class ChatMessageDto {
+  @IsString()
+  @MinLength(1, { message: 'Message is required' })
+  message: string;
+}
+
 @Controller('agents')
 @UseGuards(JwtAuthGuard)
 export class AgentsController {
@@ -72,6 +78,15 @@ export class AgentsController {
   @Put(':id')
   update(@CurrentUser() user: AuthPayload, @Param('id') id: string, @Body() dto: UpdateAgentDto) {
     return this.agentsService.update(id, user.userId, dto);
+  }
+
+  @Post(':id/chat')
+  chat(
+    @CurrentUser() user: AuthPayload,
+    @Param('id') id: string,
+    @Body() dto: ChatMessageDto,
+  ) {
+    return this.agentsService.chatWithAgent(id, user.userId, dto.message);
   }
 
   @Delete(':id')
