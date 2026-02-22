@@ -193,7 +193,7 @@ export class OpenClawHttpService implements OnModuleDestroy {
     const result = await this.request(baseUrl, token, '/hooks/agent', {
       method: 'POST',
       body,
-      timeoutMs: 25000,
+      timeoutMs: 55000,
     });
 
     if (result.status >= 200 && result.status < 300) {
