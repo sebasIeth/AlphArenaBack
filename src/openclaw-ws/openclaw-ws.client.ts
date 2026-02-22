@@ -30,6 +30,12 @@ export class OpenClawWsClient extends EventEmitter {
   private options: Required<OpenClawWsClientOptions>;
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
+  private pendingAgentRuns = new Map<string, {
+    resolve: (value: Record<string, unknown>) => void;
+    reject: (reason: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+    events: Array<Record<string, unknown>>;
+  }>();
   private devicePrivateKey!: crypto.KeyObject;
   private devicePublicKeyRaw!: Buffer;
   private deviceId!: string;
@@ -154,6 +160,40 @@ export class OpenClawWsClient extends EventEmitter {
       const payload = event.payload as unknown as ChallengePayload;
       this.sendConnect(payload.nonce);
     }
+
+    // Collect agent run events by runId
+    const runId = event.payload?.runId as string | undefined;
+    if (runId) {
+      const pending = this.pendingAgentRuns.get(runId);
+      if (pending) {
+        pending.events.push({ ...event.payload, _event: event.event });
+
+        const stream = event.payload?.stream as string | undefined;
+        const data = event.payload?.data as Record<string, unknown> | undefined;
+        const phase = data?.phase as string | undefined;
+        const state = event.payload?.state as string | undefined;
+
+        // Resolve on lifecycle error
+        if (stream === 'lifecycle' && phase === 'error') {
+          this.pendingAgentRuns.delete(runId);
+          clearTimeout(pending.timer);
+          const errorMsg = data?.error as string || data?.message as string || 'Agent run failed';
+          pending.reject(new Error(errorMsg));
+          return;
+        }
+
+        // Resolve on lifecycle complete/end/done — use last assistant event's data.text
+        if (stream === 'lifecycle' && (phase === 'complete' || phase === 'end' || phase === 'done')) {
+          this.pendingAgentRuns.delete(runId);
+          clearTimeout(pending.timer);
+          // Last assistant stream event has the full accumulated text in data.text
+          const lastAssistant = [...pending.events].reverse().find((e) => e.stream === 'assistant');
+          pending.resolve(lastAssistant ?? data ?? {});
+          return;
+        }
+      }
+    }
+
     this.emit('event', event);
     this.emit(`event:${event.event}`, event.payload);
   }
@@ -176,6 +216,11 @@ export class OpenClawWsClient extends EventEmitter {
       clearTimeout(pending.timer);
       pending.reject(err);
       this.pending.delete(id);
+    }
+    for (const [id, pending] of this.pendingAgentRuns) {
+      clearTimeout(pending.timer);
+      pending.reject(err);
+      this.pendingAgentRuns.delete(id);
     }
   }
 
@@ -263,7 +308,28 @@ export class OpenClawWsClient extends EventEmitter {
   }
 
   async agent(params: AgentParams): Promise<Record<string, unknown>> {
-    return this.send('agent', params as unknown as Record<string, unknown>);
+    const full = { idempotencyKey: randomUUID(), ...params };
+    return this.send('agent', full as unknown as Record<string, unknown>);
+  }
+
+  /**
+   * Send an agent request and wait for the completion event matching the runId.
+   */
+  async agentAndWait(params: AgentParams, timeoutMs = 90000): Promise<Record<string, unknown>> {
+    const accepted = await this.agent(params);
+    const runId = accepted.runId as string | undefined;
+    if (!runId) {
+      return accepted; // No runId means the response was already inline
+    }
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingAgentRuns.delete(runId);
+        reject(new Error(`Agent run ${runId} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      this.pendingAgentRuns.set(runId, { resolve, reject, timer, events: [] });
+    });
   }
 
   async chatSend(params: ChatSendParams): Promise<Record<string, unknown>> {

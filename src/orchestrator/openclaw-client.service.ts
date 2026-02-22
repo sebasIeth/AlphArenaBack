@@ -6,7 +6,7 @@ import {
   MarrakechDirection,
   MarrakechCarpetPlacement,
 } from '../common/types';
-import { OpenClawHttpService } from '../openclaw-ws';
+import { OpenClawWsService } from '../openclaw-ws';
 
 export interface OpenClawAgentInfo {
   openclawUrl: string;
@@ -55,9 +55,9 @@ function extractJSON(text: string): Record<string, unknown> | null {
 export class OpenClawClientService {
   private readonly logger = new Logger(OpenClawClientService.name);
 
-  constructor(private readonly openclawHttp: OpenClawHttpService) {}
+  constructor(private readonly openclawWs: OpenClawWsService) {}
 
-  // ─── OpenClaw HTTP Call ──────────────────────────────────────────
+  // ─── OpenClaw WS Call ──────────────────────────────────────────
 
   private async callOpenClaw(
     agent: OpenClawAgentInfo,
@@ -67,7 +67,7 @@ export class OpenClawClientService {
     const message = `${systemPrompt}\n\n${userPrompt}`;
     const agentId = agent.openclawAgentId || 'main';
 
-    return this.openclawHttp.sendAgentMessage(
+    return this.openclawWs.sendAgentChat(
       agent.openclawUrl,
       agent.openclawToken,
       message,
