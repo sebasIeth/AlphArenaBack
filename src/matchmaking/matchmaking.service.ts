@@ -5,6 +5,7 @@ import { MatchmakingQueue, QueueEntryData } from './matchmaking.queue';
 import { findPairs } from './pairing';
 import { Agent } from '../database/schemas';
 import { MATCHMAKING_INTERVAL_MS } from '../common/constants/game.constants';
+import { OrchestratorService } from '../orchestrator/orchestrator.service';
 
 @Injectable()
 export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
@@ -16,10 +17,47 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly queue: MatchmakingQueue,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    private readonly orchestrator: OrchestratorService,
   ) {}
 
   async onModuleInit() {
     await this.queue.loadFromDatabase();
+
+    this.setOnPairedCallback(async (agentAId, agentBId, stakeAmount, gameType) => {
+      const [agentA, agentB] = await Promise.all([
+        this.agentModel.findById(agentAId),
+        this.agentModel.findById(agentBId),
+      ]);
+      if (!agentA || !agentB) throw new Error(`Agent not found: A=${agentAId}, B=${agentBId}`);
+
+      return this.orchestrator.startMatch(
+        {
+          agentId: agentA._id.toString(),
+          userId: agentA.userId.toString(),
+          name: agentA.name,
+          endpointUrl: agentA.endpointUrl ?? '',
+          eloRating: agentA.eloRating,
+          type: agentA.type,
+          openclawUrl: agentA.openclawUrl,
+          openclawToken: agentA.openclawToken,
+          openclawAgentId: agentA.openclawAgentId,
+        },
+        {
+          agentId: agentB._id.toString(),
+          userId: agentB.userId.toString(),
+          name: agentB.name,
+          endpointUrl: agentB.endpointUrl ?? '',
+          eloRating: agentB.eloRating,
+          type: agentB.type,
+          openclawUrl: agentB.openclawUrl,
+          openclawToken: agentB.openclawToken,
+          openclawAgentId: agentB.openclawAgentId,
+        },
+        stakeAmount,
+        gameType,
+      );
+    });
+
     this.logger.log(`Matchmaking service started, queue size: ${this.queue.size()}`);
     this.intervalId = setInterval(() => { void this.processPairing(); }, MATCHMAKING_INTERVAL_MS);
   }

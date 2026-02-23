@@ -230,25 +230,30 @@ export class MatchManagerService {
     });
 
     // Escrow real potAmount in USDC smallest units (6 decimals)
-    const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** USDC_DECIMALS);
-    try {
-      const escrowTxHash = await this.settlement.escrow(
-        matchId, walletA, walletB, escrowAmount,
-      );
-      await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': escrowTxHash });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Escrow failed for match ${matchId}: ${message}`);
-      await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
-      await Promise.all([
-        this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
-        this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
-      ]);
-      this.eventBus.emit('match:error', { matchId, error: `Escrow failed: ${message}` });
-      this.activeMatches.removeMatch(matchId);
-      this.marrakechStates.delete(matchId);
-      this.matchGameTypes.delete(matchId);
-      return;
+    // Skip escrow in development mode
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.log(`Skipping escrow in development mode for match ${matchId}`);
+    } else {
+      const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** USDC_DECIMALS);
+      try {
+        const escrowTxHash = await this.settlement.escrow(
+          matchId, walletA, walletB, escrowAmount,
+        );
+        await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': escrowTxHash });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Escrow failed for match ${matchId}: ${message}`);
+        await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
+        await Promise.all([
+          this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
+          this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
+        ]);
+        this.eventBus.emit('match:error', { matchId, error: `Escrow failed: ${message}` });
+        this.activeMatches.removeMatch(matchId);
+        this.marrakechStates.delete(matchId);
+        this.matchGameTypes.delete(matchId);
+        return;
+      }
     }
 
     const clock = new MatchClock(matchId, {

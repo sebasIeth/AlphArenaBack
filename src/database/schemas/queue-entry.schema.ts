@@ -26,5 +26,4 @@ export class QueueEntry extends Document {
 }
 
 export const QueueEntrySchema = SchemaFactory.createForClass(QueueEntry);
-QueueEntrySchema.index({ agentId: 1 }, { unique: true });
 QueueEntrySchema.index({ eloRating: 1, gameType: 1, status: 1 });

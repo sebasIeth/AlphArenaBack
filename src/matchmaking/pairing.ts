@@ -23,7 +23,7 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       const entryB = sorted[j];
       if (paired.has(entryB.agentId)) continue;
       if (entryA.gameType !== entryB.gameType) continue;
-      if (entryA.userId === entryB.userId) continue;
+      if (process.env.NODE_ENV !== 'development' && entryA.userId === entryB.userId) continue;
       if (Math.abs(entryA.eloRating - entryB.eloRating) > ELO_MATCH_RANGE) continue;
       if (!stakesCompatible(entryA.stakeAmount, entryB.stakeAmount)) continue;
 

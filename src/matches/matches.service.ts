@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Match, MoveDoc } from '../database/schemas';
 
 @Injectable()
@@ -11,7 +11,7 @@ export class MatchesService {
   ) {}
 
   async findAll(status?: string, limit = 20, offset = 0) {
-    const filter: Record<string, unknown> = {};
+    const filter: Record<string, unknown> = { agents: { $exists: true } };
     if (status) filter.status = status;
 
     const [matches, total] = await Promise.all([
@@ -27,19 +27,21 @@ export class MatchesService {
 
   async findActive() {
     const matches = await this.matchModel
-      .find({ status: { $in: ['active', 'starting'] } })
+      .find({ status: { $in: ['active', 'starting'] }, agents: { $exists: true } })
       .sort({ createdAt: -1 })
       .lean();
     return { matches, count: matches.length };
   }
 
   async findById(id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid match ID');
     const match = await this.matchModel.findById(id).lean();
     if (!match) throw new NotFoundException('Match not found');
     return { match };
   }
 
   async findMoves(matchId: string) {
+    if (!Types.ObjectId.isValid(matchId)) throw new BadRequestException('Invalid match ID');
     const match = await this.matchModel.findById(matchId).lean();
     if (!match) throw new NotFoundException('Match not found');
 

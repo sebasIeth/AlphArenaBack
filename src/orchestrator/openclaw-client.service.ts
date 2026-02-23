@@ -7,6 +7,7 @@ import {
   MarrakechCarpetPlacement,
 } from '../common/types';
 import { OpenClawWsService } from '../openclaw-ws';
+import { EventBusService } from './event-bus.service';
 
 export interface OpenClawAgentInfo {
   openclawUrl: string;
@@ -21,22 +22,6 @@ export interface OpenClawMoveResult {
   error?: string;
 }
 
-// ─── System Prompts ─────────────────────────────────────────────────────────
-
-const MARRAKECH_SYSTEM = `You are a competitive Marrakech board game AI playing in a tournament for cryptocurrency stakes.
-RULES:
-- 7x7 grid. Players move merchant Assam then place 1x2 rugs.
-- Rent = number of connected same-color rugs where Assam lands.
-- Game ends when all rugs placed. Score = coins + visible rug cells.
-STRATEGY:
-1. ORIENT: Direct Assam toward opponent rugs (they pay you). Avoid your own clusters.
-2. PLACE: Extend your rug clusters for higher rent. Cover opponent rugs to break theirs.
-3. Prefer center positions. Avoid isolated placements.
-RESPOND WITH ONLY A JSON OBJECT. No text, no markdown, no explanation.`;
-
-const REVERSI_SYSTEM = `You are a competitive Reversi AI playing in a tournament for cryptocurrency stakes.
-STRATEGY: Corners are most valuable, then edges, then center. Avoid cells diagonally adjacent to empty corners.
-RESPOND WITH ONLY A JSON OBJECT. No text, no markdown, no explanation.`;
 
 // ─── JSON Extraction ────────────────────────────────────────────────────────
 
@@ -55,24 +40,45 @@ function extractJSON(text: string): Record<string, unknown> | null {
 export class OpenClawClientService {
   private readonly logger = new Logger(OpenClawClientService.name);
 
-  constructor(private readonly openclawWs: OpenClawWsService) {}
+  constructor(
+    private readonly openclawWs: OpenClawWsService,
+    private readonly eventBus: EventBusService,
+  ) {}
 
   // ─── OpenClaw WS Call ──────────────────────────────────────────
 
+  private static readonly MAX_RETRIES = 3;
+  private static readonly RATE_LIMIT_DELAY_MS = 5000;
+
   private async callOpenClaw(
     agent: OpenClawAgentInfo,
-    systemPrompt: string,
-    userPrompt: string,
+    message: string,
   ): Promise<string> {
-    const message = `${systemPrompt}\n\n${userPrompt}`;
     const agentId = agent.openclawAgentId || 'main';
 
-    return this.openclawWs.sendAgentChat(
-      agent.openclawUrl,
-      agent.openclawToken,
-      message,
-      agentId,
-    );
+    for (let attempt = 0; attempt <= OpenClawClientService.MAX_RETRIES; attempt++) {
+      try {
+        return await this.openclawWs.sendAgentChat(
+          agent.openclawUrl,
+          agent.openclawToken,
+          message,
+          agentId,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isRateLimit = msg.includes('rate limit');
+
+        if (isRateLimit && attempt < OpenClawClientService.MAX_RETRIES) {
+          const delay = OpenClawClientService.RATE_LIMIT_DELAY_MS * (attempt + 1);
+          this.logger.warn(`OpenClaw rate limit, retrying in ${delay}ms (attempt ${attempt + 1}/${OpenClawClientService.MAX_RETRIES})`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    throw new Error('OpenClaw call failed after all retries');
   }
 
   // ─── Reversi ──────────────────────────────────────────────────────────
@@ -86,13 +92,22 @@ export class OpenClawClientService {
       legalMoves: [number, number][];
       moveNumber: number;
     },
+    context?: { side: 'a' | 'b'; agentId: string },
   ): Promise<OpenClawMoveResult> {
     const { matchId, board, yourPiece, legalMoves, moveNumber } = gameState;
 
-    const userPrompt = `Move #${moveNumber}. You: ${yourPiece}. Legal: ${JSON.stringify(legalMoves)}\nBoard: ${JSON.stringify(board)}\n\nRespond: {"move":[row,col]}`;
+    const message = `Es tu turno en Reversi (movimiento #${moveNumber}). Juegas con ${yourPiece === 'B' ? 'negras (1)' : 'blancas (2)'}.\n\nTablero actual:\n${board.map((row) => row.join(' ')).join('\n')}\n\nMovimientos legales: ${JSON.stringify(legalMoves)}\n\nElige tu movimiento y responde SOLO con JSON: {"move":[fila,columna]}`;
 
     try {
-      const raw = await this.callOpenClaw(agent, REVERSI_SYSTEM, userPrompt);
+      const raw = await this.callOpenClaw(agent, message);
+
+      if (context) {
+        this.eventBus.emit('agent:thinking', {
+          matchId, side: context.side, agentId: context.agentId,
+          raw, moveNumber,
+        });
+      }
+
       const parsed = extractJSON(raw);
 
       if (parsed?.move && Array.isArray(parsed.move)) {
@@ -121,11 +136,20 @@ export class OpenClawClientService {
     state: MarrakechGameState,
     validActions: MarrakechValidActions,
     playerIndex: number,
+    context?: { side: 'a' | 'b'; agentId: string },
   ): Promise<MarrakechMoveResponse | null> {
-    const userPrompt = this.buildMarrakechPrompt(phase, state, validActions, playerIndex);
+    const message = this.buildMarrakechPrompt(phase, state, validActions, playerIndex);
 
     try {
-      const raw = await this.callOpenClaw(agent, MARRAKECH_SYSTEM, userPrompt);
+      const raw = await this.callOpenClaw(agent, message);
+
+      if (context) {
+        this.eventBus.emit('agent:thinking', {
+          matchId, side: context.side, agentId: context.agentId,
+          raw, moveNumber: state.turnNumber,
+        });
+      }
+
       const parsed = extractJSON(raw);
       if (!parsed) {
         this.logger.warn(`OpenClaw marrakech: failed to parse JSON. Raw: ${raw?.substring(0, 100)}`);
@@ -149,29 +173,30 @@ export class OpenClawClientService {
     validActions: MarrakechValidActions,
     playerIndex: number,
   ): string {
-    const header = `Turn #${state.turnNumber} | You: Player ${playerIndex} | Assam: (${state.assam.position.row},${state.assam.position.col}) facing ${state.assam.direction}`;
+    const players = state.players.map((p) => `Jugador ${p.id}: ${p.dirhams} dirhams, ${p.carpetsRemaining} alfombras restantes`).join('\n');
+    const assam = `Assam esta en (${state.assam.position.row},${state.assam.position.col}) mirando hacia ${state.assam.direction}`;
 
     switch (phase) {
       case 'orient':
-        return `${header}\nValid directions: ${JSON.stringify(validActions.directions)}\nPlayers: ${JSON.stringify(state.players.map((p) => ({ id: p.id, dirhams: p.dirhams, carpets: p.carpetsRemaining })))}\nBoard (7x7, null=empty, {playerId,carpetId}=rug): ${JSON.stringify(state.board)}\n\nRespond: {"action":{"type":"orient","direction":"X"}}`;
+        return `Turno #${state.turnNumber} en Marrakech. Eres el jugador ${playerIndex}.\n\n${assam}\n${players}\n\nTablero (7x7):\n${JSON.stringify(state.board)}\n\nPuedes orientar a Assam en estas direcciones: ${JSON.stringify(validActions.directions)}\n\nElige una direccion y responde SOLO con JSON: {"action":{"type":"orient","direction":"DIRECCION"}}`;
 
       case 'borderChoice': {
         const options = validActions.borderOptions || [];
-        return `${header}\nAssam hit the border. Options: ${JSON.stringify(options)}\n\nRespond: {"action":{"type":"borderChoice","direction":"X"}}`;
+        return `Turno #${state.turnNumber}. Assam llego al borde del tablero.\n\nOpciones disponibles: ${JSON.stringify(options)}\n\nElige hacia donde continua y responde SOLO con JSON: {"action":{"type":"borderChoice","direction":"DIRECCION"}}`;
       }
 
       case 'place': {
         const pl = validActions.placements || [];
-        if (pl.length === 0) return 'No placements. Respond: {"action":{"type":"skip"}}';
+        if (pl.length === 0) return 'No hay posiciones disponibles para colocar alfombra. Responde SOLO con JSON: {"action":{"type":"skip"}}';
         const shown = pl.slice(0, 25)
           .map((p, i) => `[${i}] (${p.cell1.row},${p.cell1.col})-(${p.cell2.row},${p.cell2.col})`)
           .join(', ');
-        const more = pl.length > 25 ? ` ...+${pl.length - 25} more` : '';
-        return `${header}\nPlayers: ${JSON.stringify(state.players.map((p) => ({ id: p.id, dirhams: p.dirhams, carpets: p.carpetsRemaining })))}\nBoard: ${JSON.stringify(state.board)}\n${pl.length} placements: ${shown}${more}\n\nRespond: {"action":{"type":"place","placement":{"cell1":{"row":R,"col":C},"cell2":{"row":R,"col":C}}}}`;
+        const more = pl.length > 25 ? ` ...+${pl.length - 25} mas` : '';
+        return `Turno #${state.turnNumber}. Ahora coloca tu alfombra.\n\n${players}\n\nTablero:\n${JSON.stringify(state.board)}\n\nPosiciones disponibles (${pl.length}): ${shown}${more}\n\nElige donde colocar tu alfombra y responde SOLO con JSON: {"action":{"type":"place","placement":{"cell1":{"row":FILA,"col":COL},"cell2":{"row":FILA,"col":COL}}}}`;
       }
 
       default:
-        return 'Respond: {"action":{"type":"skip"}}';
+        return 'Responde SOLO con JSON: {"action":{"type":"skip"}}';
     }
   }
 

@@ -72,6 +72,7 @@ export class AgentClientService {
   async requestReversiMoveFromOpenClaw(
     agent: AgentInfo,
     moveRequest: MoveRequest,
+    context?: { side: 'a' | 'b'; agentId: string },
   ): Promise<MoveResponse> {
     const openclawAgent: OpenClawAgentInfo = {
       openclawUrl: agent.openclawUrl!,
@@ -85,7 +86,7 @@ export class AgentClientService {
       yourPiece: moveRequest.yourPiece,
       legalMoves: moveRequest.legalMoves,
       moveNumber: moveRequest.moveNumber,
-    });
+    }, context);
 
     this.logger.log(
       `OpenClaw reversi agent responded (source=${result.source}, match=${moveRequest.matchId})`,
