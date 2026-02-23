@@ -96,7 +96,7 @@ export class OpenClawClientService {
   ): Promise<OpenClawMoveResult> {
     const { matchId, board, yourPiece, legalMoves, moveNumber } = gameState;
 
-    const message = `Es tu turno en Reversi (movimiento #${moveNumber}). Juegas con ${yourPiece === 'B' ? 'negras (1)' : 'blancas (2)'}.\n\nTablero actual:\n${board.map((row) => row.join(' ')).join('\n')}\n\nMovimientos legales: ${JSON.stringify(legalMoves)}\n\nElige tu movimiento y responde SOLO con JSON: {"move":[fila,columna]}`;
+    const message = `Es tu turno en Reversi (movimiento #${moveNumber}). Juegas con ${yourPiece === 'B' ? 'negras (1)' : 'blancas (2)'}.\n\nTablero actual:\n${board.map((row) => row.join(' ')).join('\n')}\n\nMovimientos legales: ${JSON.stringify(legalMoves)}\n\nExplica brevemente tu razonamiento y luego responde con JSON: {"thinking":"tu razonamiento breve","move":[fila,columna]}`;
 
     try {
       const raw = await this.callOpenClaw(agent, message);
@@ -178,25 +178,25 @@ export class OpenClawClientService {
 
     switch (phase) {
       case 'orient':
-        return `Turno #${state.turnNumber} en Marrakech. Eres el jugador ${playerIndex}.\n\n${assam}\n${players}\n\nTablero (7x7):\n${JSON.stringify(state.board)}\n\nPuedes orientar a Assam en estas direcciones: ${JSON.stringify(validActions.directions)}\n\nElige una direccion y responde SOLO con JSON: {"action":{"type":"orient","direction":"DIRECCION"}}`;
+        return `Turno #${state.turnNumber} en Marrakech. Eres el jugador ${playerIndex}.\n\n${assam}\n${players}\n\nTablero (7x7):\n${JSON.stringify(state.board)}\n\nPuedes orientar a Assam en estas direcciones: ${JSON.stringify(validActions.directions)}\n\nExplica brevemente tu razonamiento y responde con JSON: {"thinking":"tu razonamiento breve","action":{"type":"orient","direction":"DIRECCION"}}`;
 
       case 'borderChoice': {
         const options = validActions.borderOptions || [];
-        return `Turno #${state.turnNumber}. Assam llego al borde del tablero.\n\nOpciones disponibles: ${JSON.stringify(options)}\n\nElige hacia donde continua y responde SOLO con JSON: {"action":{"type":"borderChoice","direction":"DIRECCION"}}`;
+        return `Turno #${state.turnNumber}. Assam llego al borde del tablero.\n\nOpciones disponibles: ${JSON.stringify(options)}\n\nExplica brevemente tu razonamiento y responde con JSON: {"thinking":"tu razonamiento breve","action":{"type":"borderChoice","direction":"DIRECCION"}}`;
       }
 
       case 'place': {
         const pl = validActions.placements || [];
-        if (pl.length === 0) return 'No hay posiciones disponibles para colocar alfombra. Responde SOLO con JSON: {"action":{"type":"skip"}}';
+        if (pl.length === 0) return 'No hay posiciones disponibles para colocar alfombra. Responde con JSON: {"thinking":"no hay opciones","action":{"type":"skip"}}';
         const shown = pl.slice(0, 25)
           .map((p, i) => `[${i}] (${p.cell1.row},${p.cell1.col})-(${p.cell2.row},${p.cell2.col})`)
           .join(', ');
         const more = pl.length > 25 ? ` ...+${pl.length - 25} mas` : '';
-        return `Turno #${state.turnNumber}. Ahora coloca tu alfombra.\n\n${players}\n\nTablero:\n${JSON.stringify(state.board)}\n\nPosiciones disponibles (${pl.length}): ${shown}${more}\n\nElige donde colocar tu alfombra y responde SOLO con JSON: {"action":{"type":"place","placement":{"cell1":{"row":FILA,"col":COL},"cell2":{"row":FILA,"col":COL}}}}`;
+        return `Turno #${state.turnNumber}. Ahora coloca tu alfombra.\n\n${players}\n\nTablero:\n${JSON.stringify(state.board)}\n\nPosiciones disponibles (${pl.length}): ${shown}${more}\n\nExplica brevemente tu razonamiento y responde con JSON: {"thinking":"tu razonamiento breve","action":{"type":"place","placement":{"cell1":{"row":FILA,"col":COL},"cell2":{"row":FILA,"col":COL}}}}`;
       }
 
       default:
-        return 'Responde SOLO con JSON: {"action":{"type":"skip"}}';
+        return 'Responde con JSON: {"thinking":"skip","action":{"type":"skip"}}';
     }
   }
 

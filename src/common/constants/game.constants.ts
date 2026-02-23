@@ -1,5 +1,5 @@
 export const MATCH_DURATION_MS = 1_200_000;
-export const TURN_TIMEOUT_MS = 30_000;
+export const TURN_TIMEOUT_MS = 90_000;
 export const MAX_TIMEOUTS = 3;
 export const MIN_STAKE = 0;
 export const MAX_STAKE = 10_000;
