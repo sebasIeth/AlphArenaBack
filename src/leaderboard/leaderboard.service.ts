@@ -69,6 +69,7 @@ export class LeaderboardService {
     const recentMatches = await this.matchModel.find({
       $or: [{ 'agents.a.agentId': id }, { 'agents.b.agentId': id }],
       status: 'completed',
+      agents: { $exists: true },
     }).sort({ endedAt: -1 }).limit(20).select('agents result stakeAmount potAmount gameType endedAt').lean();
 
     const matchHistory = recentMatches.map((match: any) => {

@@ -1,7 +1,7 @@
 export const MATCH_DURATION_MS = 1_200_000;
 export const TURN_TIMEOUT_MS = 30_000;
 export const MAX_TIMEOUTS = 3;
-export const MIN_STAKE = 10;
+export const MIN_STAKE = 0;
 export const MAX_STAKE = 10_000;
 export const PLATFORM_FEE_PERCENT = 5;
 export const MATCHMAKING_INTERVAL_MS = 2_000;

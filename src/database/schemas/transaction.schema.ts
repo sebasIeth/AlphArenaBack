@@ -34,6 +34,5 @@ export class Transaction extends Document {
 }
 
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);
-TransactionSchema.index({ matchId: 1 });
 TransactionSchema.index({ userId: 1, createdAt: -1 });
 TransactionSchema.index({ txHash: 1 }, { sparse: true, unique: true });

@@ -44,6 +44,14 @@ export interface MatchErrorEvent {
   error: string;
 }
 
+export interface AgentThinkingEvent {
+  matchId: string;
+  side: 'a' | 'b';
+  agentId: string;
+  raw: string;
+  moveNumber: number;
+}
+
 export interface EventBusEvents {
   'match:created': MatchCreatedEvent;
   'match:started': MatchStartedEvent;
@@ -51,6 +59,7 @@ export interface EventBusEvents {
   'match:timeout': MatchTimeoutEvent;
   'match:ended': MatchEndedEvent;
   'match:error': MatchErrorEvent;
+  'agent:thinking': AgentThinkingEvent;
 }
 
 export type EventName = keyof EventBusEvents;

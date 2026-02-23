@@ -20,6 +20,7 @@ export class MatchCleanupJob {
     const staleMatches = await this.matchModel.find({
       status: { $in: ['starting', 'active'] },
       updatedAt: { $lt: cutoff },
+      agents: { $exists: true },
     });
 
     if (staleMatches.length === 0) {

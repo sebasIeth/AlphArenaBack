@@ -4,6 +4,7 @@ import {
   MatchMoveEvent,
   MatchTimeoutEvent,
   MatchEndedEvent,
+  AgentThinkingEvent,
 } from '../common/types';
 import { EventBusService } from '../orchestrator/event-bus.service';
 import { RoomsService } from './rooms.service';
@@ -82,15 +83,30 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       this.rooms.cleanup(data.matchId);
     };
 
+    const onAgentThinking = (data: AgentThinkingEvent): void => {
+      this.rooms.broadcast(data.matchId, {
+        type: 'agent:thinking',
+        data: {
+          matchId: data.matchId,
+          side: data.side,
+          agentId: data.agentId,
+          raw: data.raw,
+          moveNumber: data.moveNumber,
+        },
+      });
+    };
+
     this.eventBus.on('match:started', onMatchStarted);
     this.eventBus.on('match:move', onMatchMove);
     this.eventBus.on('match:timeout', onMatchTimeout);
     this.eventBus.on('match:ended', onMatchEnded);
+    this.eventBus.on('agent:thinking', onAgentThinking);
 
     this.handlers.set('match:started', onMatchStarted as (...args: unknown[]) => void);
     this.handlers.set('match:move', onMatchMove as (...args: unknown[]) => void);
     this.handlers.set('match:timeout', onMatchTimeout as (...args: unknown[]) => void);
     this.handlers.set('match:ended', onMatchEnded as (...args: unknown[]) => void);
+    this.handlers.set('agent:thinking', onAgentThinking as (...args: unknown[]) => void);
 
     this.logger.log('Broadcaster started');
   }

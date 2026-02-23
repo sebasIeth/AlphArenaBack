@@ -5,7 +5,7 @@ import { MatchmakingService } from './matchmaking.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
-import { Agent } from '../database/schemas';
+import { Agent, Match } from '../database/schemas';
 import { IsString, MinLength, IsNumber, Min, Max, IsIn } from 'class-validator';
 import { MIN_STAKE, MAX_STAKE } from '../common/constants/game.constants';
 
@@ -25,6 +25,7 @@ export class MatchmakingController {
   constructor(
     private readonly matchmakingService: MatchmakingService,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(Match.name) private readonly matchModel: Model<Match>,
   ) {}
 
   @Post('join')
@@ -69,7 +70,21 @@ export class MatchmakingController {
     if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
 
     const queueEntry = await this.matchmakingService.getQueueStatus(agentId);
-    if (!queueEntry) return { inQueue: false, agentId, agentStatus: agent.status };
+
+    if (!queueEntry) {
+      // Agent is not in queue — check if it's in an active match
+      if (agent.status === 'in_match') {
+        const activeMatch = await this.matchModel.findOne({
+          $or: [{ 'agents.a.agentId': agentId }, { 'agents.b.agentId': agentId }],
+          status: { $in: ['starting', 'active'] },
+        }).select('_id gameType status').lean();
+
+        if (activeMatch) {
+          return { inQueue: false, agentId, agentStatus: agent.status, matchId: (activeMatch as any)._id.toString(), matchStatus: activeMatch.status, gameType: activeMatch.gameType };
+        }
+      }
+      return { inQueue: false, agentId, agentStatus: agent.status };
+    }
 
     return {
       inQueue: true, agentId, agentStatus: agent.status,
