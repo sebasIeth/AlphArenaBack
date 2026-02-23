@@ -52,7 +52,7 @@ AlphArena is a TypeScript monorepo built with Turborepo and pnpm. All services r
 pnpm install
 
 # Copy environment file and configure
-cp .env.example .env
+cp .env .env
 # Edit .env with your MongoDB URI, JWT secret, etc.
 
 # Build all packages

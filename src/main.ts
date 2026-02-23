@@ -9,7 +9,7 @@ import { ConfigService } from './common/config/config.service';
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
-
+    //only
   app.enableCors({
     origin: true,
     credentials: true,
