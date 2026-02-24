@@ -11,6 +11,9 @@ export interface MatchStartedEvent {
   matchId: string;
   gameType: string;
   board: Board;
+  // Marrakech-specific
+  assam?: { position: { row: number; col: number }; direction: string };
+  players?: { id: number; name: string; dirhams: number; carpetsRemaining: number }[];
 }
 
 export interface MatchMoveEvent {
@@ -21,6 +24,13 @@ export interface MatchMoveEvent {
   score: { a: number; b: number };
   moveNumber: number;
   thinkingTimeMs: number;
+  // Marrakech-specific
+  assam?: { position: { row: number; col: number }; direction: string };
+  diceResult?: { value: number; faces: number[] };
+  movePath?: { row: number; col: number }[];
+  phase?: string;
+  tribute?: { fromPlayerId: number; toPlayerId: number; amount: number } | null;
+  players?: { id: number; name: string; dirhams: number; carpetsRemaining: number; eliminated: boolean }[];
 }
 
 export interface MatchTimeoutEvent {
@@ -52,6 +62,18 @@ export interface AgentThinkingEvent {
   moveNumber: number;
 }
 
+export interface MatchmakingCountdownEvent {
+  gameType: string;
+  remainingMs: number;
+  agents: { agentId: string; eloRating: number }[];
+}
+
+export interface MatchmakingMatchedEvent {
+  matchId: string;
+  gameType: string;
+  agents: string[];
+}
+
 export interface EventBusEvents {
   'match:created': MatchCreatedEvent;
   'match:started': MatchStartedEvent;
@@ -60,6 +82,8 @@ export interface EventBusEvents {
   'match:ended': MatchEndedEvent;
   'match:error': MatchErrorEvent;
   'agent:thinking': AgentThinkingEvent;
+  'matchmaking:countdown': MatchmakingCountdownEvent;
+  'matchmaking:matched': MatchmakingMatchedEvent;
 }
 
 export type EventName = keyof EventBusEvents;

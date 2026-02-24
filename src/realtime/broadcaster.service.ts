@@ -5,6 +5,8 @@ import {
   MatchTimeoutEvent,
   MatchEndedEvent,
   AgentThinkingEvent,
+  MatchmakingCountdownEvent,
+  MatchmakingMatchedEvent,
 } from '../common/types';
 import { EventBusService } from '../orchestrator/event-bus.service';
 import { RoomsService } from './rooms.service';
@@ -31,29 +33,34 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Broadcaster starting, subscribing to match events');
 
     const onMatchStarted = (data: MatchStartedEvent): void => {
-      this.rooms.broadcast(data.matchId, {
-        type: 'match:start',
-        data: {
-          matchId: data.matchId,
-          gameType: data.gameType,
-          board: data.board,
-        },
-      });
+      const payload: Record<string, unknown> = {
+        matchId: data.matchId,
+        gameType: data.gameType,
+        board: data.board,
+      };
+      if (data.assam) payload.assam = data.assam;
+      if (data.players) payload.players = data.players;
+      this.rooms.broadcast(data.matchId, { type: 'match:start', data: payload });
     };
 
     const onMatchMove = (data: MatchMoveEvent): void => {
-      this.rooms.broadcast(data.matchId, {
-        type: 'match:move',
-        data: {
-          matchId: data.matchId,
-          side: data.side,
-          move: { row: data.move.row, col: data.move.col },
-          boardState: data.boardState,
-          score: { a: data.score.a, b: data.score.b },
-          moveNumber: data.moveNumber,
-          thinkingTimeMs: data.thinkingTimeMs,
-        },
-      });
+      const payload: Record<string, unknown> = {
+        matchId: data.matchId,
+        side: data.side,
+        move: { row: data.move.row, col: data.move.col },
+        boardState: data.boardState,
+        score: { a: data.score.a, b: data.score.b },
+        moveNumber: data.moveNumber,
+        thinkingTimeMs: data.thinkingTimeMs,
+      };
+      // Marrakech-specific fields
+      if (data.assam) payload.assam = data.assam;
+      if (data.diceResult) payload.diceResult = data.diceResult;
+      if (data.movePath) payload.movePath = data.movePath;
+      if (data.phase) payload.phase = data.phase;
+      if (data.tribute !== undefined) payload.tribute = data.tribute;
+      if (data.players) payload.players = data.players;
+      this.rooms.broadcast(data.matchId, { type: 'match:move', data: payload });
     };
 
     const onMatchTimeout = (data: MatchTimeoutEvent): void => {
@@ -96,17 +103,43 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       });
     };
 
+    const onMatchmakingCountdown = (data: MatchmakingCountdownEvent): void => {
+      this.rooms.broadcastAll({
+        type: 'matchmaking:countdown',
+        data: {
+          gameType: data.gameType,
+          remainingMs: data.remainingMs,
+          agents: data.agents,
+        },
+      });
+    };
+
+    const onMatchmakingMatched = (data: MatchmakingMatchedEvent): void => {
+      this.rooms.broadcastAll({
+        type: 'matchmaking:matched',
+        data: {
+          matchId: data.matchId,
+          gameType: data.gameType,
+          agents: data.agents,
+        },
+      });
+    };
+
     this.eventBus.on('match:started', onMatchStarted);
     this.eventBus.on('match:move', onMatchMove);
     this.eventBus.on('match:timeout', onMatchTimeout);
     this.eventBus.on('match:ended', onMatchEnded);
     this.eventBus.on('agent:thinking', onAgentThinking);
+    this.eventBus.on('matchmaking:countdown', onMatchmakingCountdown);
+    this.eventBus.on('matchmaking:matched', onMatchmakingMatched);
 
     this.handlers.set('match:started', onMatchStarted as (...args: unknown[]) => void);
     this.handlers.set('match:move', onMatchMove as (...args: unknown[]) => void);
     this.handlers.set('match:timeout', onMatchTimeout as (...args: unknown[]) => void);
     this.handlers.set('match:ended', onMatchEnded as (...args: unknown[]) => void);
     this.handlers.set('agent:thinking', onAgentThinking as (...args: unknown[]) => void);
+    this.handlers.set('matchmaking:countdown', onMatchmakingCountdown as (...args: unknown[]) => void);
+    this.handlers.set('matchmaking:matched', onMatchmakingMatched as (...args: unknown[]) => void);
 
     this.logger.log('Broadcaster started');
   }

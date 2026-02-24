@@ -231,6 +231,21 @@ export class MarrakechTurnControllerService {
       boardState: this.serializeBoard(state.board),
       score: { a: state.players[0]?.dirhams ?? 0, b: state.players[1]?.dirhams ?? 0 },
       moveNumber, thinkingTimeMs: 0,
+      // Marrakech-specific
+      assam: {
+        position: { row: state.assam.position.row, col: state.assam.position.col },
+        direction: state.assam.direction,
+      },
+      diceResult: state.lastDiceRoll ?? undefined,
+      movePath: state.movePath.length > 0 ? state.movePath : undefined,
+      phase: state.phase,
+      tribute: state.currentTribute
+        ? { fromPlayerId: state.currentTribute.fromPlayerId, toPlayerId: state.currentTribute.toPlayerId, amount: state.currentTribute.amount }
+        : null,
+      players: state.players.map((p) => ({
+        id: p.id, name: p.name, dirhams: p.dirhams,
+        carpetsRemaining: p.carpetsRemaining, eliminated: p.eliminated,
+      })),
     });
   }
 

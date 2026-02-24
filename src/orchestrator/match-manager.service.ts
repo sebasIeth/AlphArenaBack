@@ -268,9 +268,18 @@ export class MatchManagerService {
     await this.matchModel.updateOne({ _id: matchId }, { status: 'active', startedAt: new Date() });
     clock.startMatch();
 
-    this.eventBus.emit('match:started', {
-      matchId, gameType, board: matchState.gameState.board,
-    });
+    const mkStartState = this.marrakechStates.get(matchId);
+    const startedPayload: any = { matchId, gameType, board: matchState.gameState.board };
+    if (gameType === 'marrakech' && mkStartState) {
+      startedPayload.assam = {
+        position: { row: mkStartState.assam.position.row, col: mkStartState.assam.position.col },
+        direction: mkStartState.assam.direction,
+      };
+      startedPayload.players = mkStartState.players.map((p) => ({
+        id: p.id, name: p.name, dirhams: p.dirhams, carpetsRemaining: p.carpetsRemaining,
+      }));
+    }
+    this.eventBus.emit('match:started', startedPayload);
 
     const loopFn = gameType === 'marrakech'
       ? this.runMarrakechGameLoop(matchId)

@@ -96,7 +96,7 @@ export class OpenClawClientService {
   ): Promise<OpenClawMoveResult> {
     const { matchId, board, yourPiece, legalMoves, moveNumber } = gameState;
 
-    const message = `Es tu turno en Reversi (movimiento #${moveNumber}). Juegas con ${yourPiece === 'B' ? 'negras (1)' : 'blancas (2)'}.\n\nTablero actual:\n${board.map((row) => row.join(' ')).join('\n')}\n\nMovimientos legales: ${JSON.stringify(legalMoves)}\n\nExplica brevemente tu razonamiento y luego responde con JSON: {"thinking":"tu razonamiento breve","move":[fila,columna]}`;
+    const message = `It's your turn in Reversi (move #${moveNumber}). You play as ${yourPiece === 'B' ? 'black (1)' : 'white (2)'}.\n\nCurrent board:\n${board.map((row) => row.join(' ')).join('\n')}\n\nLegal moves: ${JSON.stringify(legalMoves)}\n\nYou MUST respond in English. Briefly explain your reasoning and then respond with JSON: {"thinking":"your brief reasoning","move":[row,col]}`;
 
     try {
       const raw = await this.callOpenClaw(agent, message);
@@ -173,30 +173,30 @@ export class OpenClawClientService {
     validActions: MarrakechValidActions,
     playerIndex: number,
   ): string {
-    const players = state.players.map((p) => `Jugador ${p.id}: ${p.dirhams} dirhams, ${p.carpetsRemaining} alfombras restantes`).join('\n');
-    const assam = `Assam esta en (${state.assam.position.row},${state.assam.position.col}) mirando hacia ${state.assam.direction}`;
+    const players = state.players.map((p) => `Player ${p.id}: ${p.dirhams} dirhams, ${p.carpetsRemaining} carpets remaining`).join('\n');
+    const assam = `Assam is at (${state.assam.position.row},${state.assam.position.col}) facing ${state.assam.direction}`;
 
     switch (phase) {
       case 'orient':
-        return `Turno #${state.turnNumber} en Marrakech. Eres el jugador ${playerIndex}.\n\n${assam}\n${players}\n\nTablero (7x7):\n${JSON.stringify(state.board)}\n\nPuedes orientar a Assam en estas direcciones: ${JSON.stringify(validActions.directions)}\n\nExplica brevemente tu razonamiento y responde con JSON: {"thinking":"tu razonamiento breve","action":{"type":"orient","direction":"DIRECCION"}}`;
+        return `Turn #${state.turnNumber} in Marrakech. You are player ${playerIndex}.\n\n${assam}\n${players}\n\nBoard (7x7):\n${JSON.stringify(state.board)}\n\nYou can orient Assam in these directions: ${JSON.stringify(validActions.directions)}\n\nYou MUST respond in English. Briefly explain your reasoning and respond with JSON: {"thinking":"your brief reasoning","action":{"type":"orient","direction":"DIRECTION"}}`;
 
       case 'borderChoice': {
         const options = validActions.borderOptions || [];
-        return `Turno #${state.turnNumber}. Assam llego al borde del tablero.\n\nOpciones disponibles: ${JSON.stringify(options)}\n\nExplica brevemente tu razonamiento y responde con JSON: {"thinking":"tu razonamiento breve","action":{"type":"borderChoice","direction":"DIRECCION"}}`;
+        return `Turn #${state.turnNumber}. Assam reached the edge of the board.\n\nAvailable options: ${JSON.stringify(options)}\n\nYou MUST respond in English. Briefly explain your reasoning and respond with JSON: {"thinking":"your brief reasoning","action":{"type":"borderChoice","direction":"DIRECTION"}}`;
       }
 
       case 'place': {
         const pl = validActions.placements || [];
-        if (pl.length === 0) return 'No hay posiciones disponibles para colocar alfombra. Responde con JSON: {"thinking":"no hay opciones","action":{"type":"skip"}}';
+        if (pl.length === 0) return 'No available positions to place a carpet. Respond with JSON: {"thinking":"no options","action":{"type":"skip"}}';
         const shown = pl.slice(0, 25)
           .map((p, i) => `[${i}] (${p.cell1.row},${p.cell1.col})-(${p.cell2.row},${p.cell2.col})`)
           .join(', ');
-        const more = pl.length > 25 ? ` ...+${pl.length - 25} mas` : '';
-        return `Turno #${state.turnNumber}. Ahora coloca tu alfombra.\n\n${players}\n\nTablero:\n${JSON.stringify(state.board)}\n\nPosiciones disponibles (${pl.length}): ${shown}${more}\n\nExplica brevemente tu razonamiento y responde con JSON: {"thinking":"tu razonamiento breve","action":{"type":"place","placement":{"cell1":{"row":FILA,"col":COL},"cell2":{"row":FILA,"col":COL}}}}`;
+        const more = pl.length > 25 ? ` ...+${pl.length - 25} more` : '';
+        return `Turn #${state.turnNumber}. Now place your carpet.\n\n${players}\n\nBoard:\n${JSON.stringify(state.board)}\n\nAvailable positions (${pl.length}): ${shown}${more}\n\nYou MUST respond in English. Briefly explain your reasoning and respond with JSON: {"thinking":"your brief reasoning","action":{"type":"place","placement":{"cell1":{"row":ROW,"col":COL},"cell2":{"row":ROW,"col":COL}}}}`;
       }
 
       default:
-        return 'Responde con JSON: {"thinking":"skip","action":{"type":"skip"}}';
+        return 'Respond with JSON: {"thinking":"skip","action":{"type":"skip"}}';
     }
   }
 
