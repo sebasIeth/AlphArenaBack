@@ -43,6 +43,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     try {
       const payload = jwt.verify(token, this.configService.jwtSecret) as { userId: string; username: string };
       (client as any).user = payload;
+      this.rooms.registerClient(client);
       this.logger.log(`Client ${client.id} connected (user: ${payload.username})`);
     } catch {
       client.emit('message', {
@@ -70,6 +71,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleDisconnect(client: Socket): void {
     this.logger.debug(`Client ${client.id} disconnected, cleaning up rooms`);
+    this.rooms.unregisterClient(client);
     this.rooms.leaveAll(client);
   }
 

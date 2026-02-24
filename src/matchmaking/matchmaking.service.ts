@@ -4,8 +4,9 @@ import { Model } from 'mongoose';
 import { MatchmakingQueue, QueueEntryData } from './matchmaking.queue';
 import { findPairs } from './pairing';
 import { Agent } from '../database/schemas';
-import { MATCHMAKING_INTERVAL_MS } from '../common/constants/game.constants';
+import { MATCHMAKING_INTERVAL_MS, MATCHMAKING_COUNTDOWN_MS } from '../common/constants/game.constants';
 import { OrchestratorService } from '../orchestrator/orchestrator.service';
+import { EventBusService } from '../orchestrator/event-bus.service';
 
 @Injectable()
 export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
@@ -13,11 +14,13 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private processing = false;
   private onPairedCallback: ((agentA: string, agentB: string, stakeAmount: number, gameType: string) => Promise<string>) | null = null;
+  private readonly countdowns = new Map<string, { startedAt: number }>();
 
   constructor(
     private readonly queue: MatchmakingQueue,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     private readonly orchestrator: OrchestratorService,
+    private readonly eventBus: EventBusService,
   ) {}
 
   async onModuleInit() {
@@ -67,6 +70,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    this.countdowns.clear();
     this.logger.log('Matchmaking service stopped');
   }
 
@@ -94,26 +98,72 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     return this.queue.size();
   }
 
+  private emitCountdown(gameType: string, remainingMs: number, waiting: QueueEntryData[]): void {
+    this.eventBus.emit('matchmaking:countdown', {
+      gameType,
+      remainingMs,
+      agents: waiting.map((e) => ({ agentId: e.agentId, eloRating: e.eloRating })),
+    });
+  }
+
   private async processPairing(): Promise<void> {
     if (this.processing || !this.onPairedCallback) return;
     this.processing = true;
 
     try {
       const gameTypes = this.queue.getGameTypes();
+
+      // Cancel countdowns for game types that no longer have enough agents
+      for (const [gameType, _countdown] of this.countdowns) {
+        const waiting = this.queue.getWaiting(gameType);
+        if (waiting.length < 2) {
+          this.logger.log(`Countdown cancelled for ${gameType} — not enough agents`);
+          this.countdowns.delete(gameType);
+        }
+      }
+
       for (const gameType of gameTypes) {
         const waiting = this.queue.getWaiting(gameType);
         if (waiting.length < 2) continue;
+
         const pairs = findPairs(waiting);
         if (pairs.length === 0) continue;
 
-        this.logger.log(`Found ${pairs.length} pairs for ${gameType}`);
+        const countdown = this.countdowns.get(gameType);
+        const now = Date.now();
+
+        if (!countdown) {
+          // Start a new countdown
+          this.countdowns.set(gameType, { startedAt: now });
+          this.logger.log(`Countdown started for ${gameType} with ${waiting.length} agents`);
+          this.emitCountdown(gameType, MATCHMAKING_COUNTDOWN_MS, waiting);
+          continue;
+        }
+
+        const elapsed = now - countdown.startedAt;
+        const remainingMs = MATCHMAKING_COUNTDOWN_MS - elapsed;
+
+        if (remainingMs > 0) {
+          // Countdown still active — emit tick
+          this.emitCountdown(gameType, remainingMs, waiting);
+          continue;
+        }
+
+        // Countdown expired — run pairing on the full pool
+        this.countdowns.delete(gameType);
+        this.logger.log(`Countdown expired for ${gameType}, pairing ${pairs.length} pair(s)`);
 
         for (const [entryA, entryB] of pairs) {
           try {
             await this.queue.setStatus(entryA.agentId, 'pairing');
             await this.queue.setStatus(entryB.agentId, 'pairing');
             const stakeAmount = Math.min(entryA.stakeAmount, entryB.stakeAmount);
-            await this.onPairedCallback(entryA.agentId, entryB.agentId, stakeAmount, gameType);
+            const matchId = await this.onPairedCallback(entryA.agentId, entryB.agentId, stakeAmount, gameType);
+            this.eventBus.emit('matchmaking:matched', {
+              matchId,
+              gameType,
+              agents: [entryA.agentId, entryB.agentId],
+            });
             await this.queue.remove(entryA.agentId);
             await this.queue.remove(entryB.agentId);
           } catch (err) {

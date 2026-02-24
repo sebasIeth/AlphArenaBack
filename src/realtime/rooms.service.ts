@@ -5,6 +5,27 @@ import { Socket } from 'socket.io';
 export class RoomsService {
   private readonly logger = new Logger(RoomsService.name);
   private readonly rooms = new Map<string, Set<Socket>>();
+  private readonly allClients = new Set<Socket>();
+
+  registerClient(client: Socket): void {
+    this.allClients.add(client);
+  }
+
+  unregisterClient(client: Socket): void {
+    this.allClients.delete(client);
+  }
+
+  broadcastAll(message: Record<string, unknown>): void {
+    for (const client of this.allClients) {
+      try {
+        if (client.connected) {
+          client.emit('message', message);
+        }
+      } catch {
+        this.logger.warn(`Failed to broadcast to client ${client.id}`);
+      }
+    }
+  }
 
   join(matchId: string, client: Socket): void {
     let room = this.rooms.get(matchId);

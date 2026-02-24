@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory, raw } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { encrypt, decrypt } from '../../common/crypto.util';
 
 @Schema({ _id: false })
 export class AgentStatsSubDoc {
@@ -45,7 +46,7 @@ export class Agent extends Document {
   @Prop({ required: false })
   openclawUrl: string;
 
-  @Prop({ required: false })
+  @Prop({ required: false, set: (v: string) => v ? encrypt(v) : v, get: (v: string) => v ? decrypt(v) : v })
   openclawToken: string;
 
   @Prop({ default: 'main' })
