@@ -22,7 +22,9 @@ export class UpdateAgentDto {
   @IsOptional()
   @IsString()
   openclawAgentId?: string;
-
+@IsOptional()
+  @IsString()
+  selfclawPublicKey?: string;
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one game type is required' })

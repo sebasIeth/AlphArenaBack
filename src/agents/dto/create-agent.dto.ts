@@ -26,7 +26,9 @@ export class CreateAgentDto {
   @IsOptional()
   @IsString()
   openclawAgentId?: string;
-
+ @IsOptional()
+  @IsString()                                                                                  
+  selfclawPublicKey?: string;
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one game type is required' })
   @IsIn(['reversi', 'marrakech'], { each: true })

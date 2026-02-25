@@ -52,6 +52,9 @@ export class Agent extends Document {
   @Prop({ default: 'main' })
   openclawAgentId: string;
 
+@Prop({ required: false })
+  selfclawPublicKey: string;
+
   @Prop({ default: 1200, index: true })
   eloRating: number;
 
