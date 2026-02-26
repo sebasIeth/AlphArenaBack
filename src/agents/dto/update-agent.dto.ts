@@ -1,4 +1,4 @@
-import { IsString, MinLength, MaxLength, IsUrl, IsArray, ArrayMinSize, IsIn, IsOptional } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsUrl, IsArray, ArrayMinSize, IsIn, IsOptional, IsBoolean, IsNumber, Min, Max } from 'class-validator';
 
 export class UpdateAgentDto {
   @IsOptional()
@@ -30,4 +30,14 @@ export class UpdateAgentDto {
   @ArrayMinSize(1, { message: 'At least one game type is required' })
   @IsIn(['reversi', 'marrakech'], { each: true })
   gameTypes?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  autoPlay?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(10000)
+  autoPlayStakeAmount?: number;
 }

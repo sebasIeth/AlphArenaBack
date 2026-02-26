@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ForbiddenException, ConflictException, BadRequestException, Logger, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Agent } from '../database/schemas';
@@ -6,6 +6,8 @@ import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { DEFAULT_ELO } from '../common/constants/game.constants';
 import { OpenClawWsService } from '../openclaw-ws';
+import { AutoPlayService } from '../matchmaking/auto-play.service';
+import { MatchmakingService } from '../matchmaking/matchmaking.service';
 
 @Injectable()
 export class AgentsService {
@@ -14,6 +16,8 @@ export class AgentsService {
   constructor(
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     private readonly openclawWs: OpenClawWsService,
+    @Inject(forwardRef(() => AutoPlayService)) private readonly autoPlayService: AutoPlayService,
+    @Inject(forwardRef(() => MatchmakingService)) private readonly matchmakingService: MatchmakingService,
   ) {}
 
   async create(userId: string, dto: CreateAgentDto) {
@@ -81,8 +85,35 @@ export class AgentsService {
     if (dto.openclawToken !== undefined) agent.openclawToken = dto.openclawToken;
     if (dto.openclawAgentId !== undefined) agent.openclawAgentId = dto.openclawAgentId;
     if (dto.gameTypes !== undefined) agent.gameTypes = dto.gameTypes;
+    if (dto.autoPlayStakeAmount !== undefined) agent.autoPlayStakeAmount = dto.autoPlayStakeAmount;
+
+    if (dto.autoPlay !== undefined) {
+      agent.autoPlay = dto.autoPlay;
+
+      if (dto.autoPlay) {
+        // Reset error counter when enabling
+        agent.autoPlayConsecutiveErrors = 0;
+      }
+    }
 
     await agent.save();
+
+    // Handle auto-play side effects after save
+    if (dto.autoPlay === true && agent.status === 'idle') {
+      this.autoPlayService.scheduleRequeue(id);
+    } else if (dto.autoPlay === false) {
+      this.autoPlayService.cancelPendingRequeue(id);
+      if (agent.status === 'queued') {
+        try {
+          await this.matchmakingService.leaveQueue(id);
+          agent.status = 'idle';
+          await agent.save();
+        } catch (error: unknown) {
+          this.logger.warn(`Failed to remove agent ${id} from queue on auto-play disable`);
+        }
+      }
+    }
+
     this.logger.log(`Agent updated: ${id}`);
     return { agent };
   }
@@ -92,7 +123,19 @@ export class AgentsService {
     if (!agent) throw new NotFoundException('Agent not found');
     if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
     if (agent.status === 'in_match') throw new BadRequestException('Cannot disable an agent that is currently in a match');
-    if (agent.status === 'queued') throw new BadRequestException('Cannot disable an agent that is currently in the matchmaking queue. Remove it from the queue first.');
+
+    // If agent has auto-play, disable it and cancel pending requeue
+    if (agent.autoPlay) {
+      agent.autoPlay = false;
+      this.autoPlayService.cancelPendingRequeue(id);
+    }
+
+    // If queued, remove from queue first
+    if (agent.status === 'queued') {
+      try {
+        await this.matchmakingService.leaveQueue(id);
+      } catch {}
+    }
 
     agent.status = 'disabled';
     await agent.save();

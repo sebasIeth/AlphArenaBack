@@ -135,6 +135,8 @@ export class ResultHandlerService {
 
     this.eventBus.emit('match:ended', {
       matchId,
+      agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId },
+      gameType: matchDoc.gameType ?? 'reversi',
       result: { winnerId, reason, finalScore, totalMoves: gameState.moveNumber },
     });
 

@@ -215,7 +215,7 @@ export class MatchManagerService {
         this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
         this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
       ]);
-      this.eventBus.emit('match:error', { matchId, error: 'Missing wallet address for agent owner' });
+      this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: 'Missing wallet address for agent owner' });
       this.activeMatches.removeMatch(matchId);
       this.marrakechStates.delete(matchId);
       this.matchGameTypes.delete(matchId);
@@ -249,7 +249,7 @@ export class MatchManagerService {
           this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
           this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
         ]);
-        this.eventBus.emit('match:error', { matchId, error: `Escrow failed: ${message}` });
+        this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: `Escrow failed: ${message}` });
         this.activeMatches.removeMatch(matchId);
         this.marrakechStates.delete(matchId);
         this.matchGameTypes.delete(matchId);
@@ -436,7 +436,10 @@ export class MatchManagerService {
     const matchState = this.activeMatches.getMatch(matchId);
     if (matchState?.clock) matchState.clock.stop();
 
-    this.eventBus.emit('match:error', { matchId, error: errorMessage });
+    const agentIds = matchState
+      ? { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }
+      : undefined;
+    this.eventBus.emit('match:error', { matchId, agentIds, error: errorMessage });
 
     try {
       await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });

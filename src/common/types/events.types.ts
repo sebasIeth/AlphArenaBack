@@ -41,6 +41,8 @@ export interface MatchTimeoutEvent {
 
 export interface MatchEndedEvent {
   matchId: string;
+  agentIds: { a: string; b: string };
+  gameType: string;
   result: {
     winnerId: string | null;
     reason: string;
@@ -51,6 +53,7 @@ export interface MatchEndedEvent {
 
 export interface MatchErrorEvent {
   matchId: string;
+  agentIds?: { a: string; b: string };
   error: string;
 }
 

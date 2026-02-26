@@ -17,5 +17,8 @@ export const PIECE = {
   WHITE: 2,
 } as const;
 
+export const AUTO_PLAY_REQUEUE_DELAY_MS = 10_000;
+export const AUTO_PLAY_MAX_CONSECUTIVE_ERRORS = 3;
+
 export const GAME_TYPES = ['reversi', 'marrakech'] as const;
 export type GameType = (typeof GAME_TYPES)[number];

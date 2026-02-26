@@ -76,6 +76,15 @@ export class Agent extends Document {
   @Prop({ type: [String], default: ['reversi'] })
   gameTypes: string[];
 
+  @Prop({ default: false })
+  autoPlay: boolean;
+
+  @Prop({ default: 0 })
+  autoPlayStakeAmount: number;
+
+  @Prop({ default: 0 })
+  autoPlayConsecutiveErrors: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
