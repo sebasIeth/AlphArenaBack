@@ -2,10 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
-  GameState, Side, Board, Piece,
+  GameState, Side, Board, Piece, PlayerColor,
   MarrakechGameState,
 } from '../common/types';
-import { MAX_TIMEOUTS, USDC_DECIMALS } from '../common/constants/game.constants';
+import { MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, USDC_DECIMALS } from '../common/constants/game.constants';
 import { Match, Agent } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
 import { GameEngineService } from '../game-engine/game-engine.service';
@@ -326,6 +326,7 @@ export class MatchManagerService {
       if (matchState.timeouts.a >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'b'); return; }
       if (matchState.timeouts.b >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'a'); return; }
 
+      await this.matchModel.updateOne({ _id: matchId }, { turnStartedAt: new Date() }).catch(() => {});
       const turnResult = await this.turnController.executeTurn(matchState);
       const updatedState = this.activeMatches.getMatch(matchId);
       if (!updatedState) return;
@@ -374,6 +375,7 @@ export class MatchManagerService {
       if (matchState.timeouts.a >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'b'); return; }
       if (matchState.timeouts.b >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'a'); return; }
 
+      await this.matchModel.updateOne({ _id: matchId }, { turnStartedAt: new Date() }).catch(() => {});
       const turnResult = await this.marrakechTurnController.executeTurn(matchState, mkState);
       this.marrakechStates.set(matchId, turnResult.gameState);
 
@@ -478,6 +480,224 @@ export class MatchManagerService {
     this.marrakechStates.delete(matchId);
     this.matchGameTypes.delete(matchId);
     setTimeout(() => this.endedMatches.delete(matchId), 5000);
+  }
+
+  async recoverActiveMatches(): Promise<void> {
+    // 1. Cancel matches stuck in 'starting' status
+    const startingMatches = await this.matchModel.find({ status: 'starting' });
+    for (const match of startingMatches) {
+      const matchId = match._id.toString();
+      this.logger.warn(`Cancelling stuck 'starting' match ${matchId}`);
+      await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled', endedAt: new Date() });
+      await Promise.all([
+        this.agentModel.updateOne({ _id: match.agents.a.agentId, status: 'in_match' }, { status: 'idle' }),
+        this.agentModel.updateOne({ _id: match.agents.b.agentId, status: 'in_match' }, { status: 'idle' }),
+      ]);
+      try { await this.settlement.refund(matchId); } catch {}
+    }
+
+    // 2. Recover matches with 'active' status
+    const activeMatches = await this.matchModel.find({ status: 'active' });
+    let recovered = 0;
+
+    for (const match of activeMatches) {
+      const matchId = match._id.toString();
+      const gameType = match.gameType ?? 'reversi';
+
+      try {
+        // Load agent docs for endpoints, type, openclaw fields, walletAddress
+        const [agentDocA, agentDocB] = await Promise.all([
+          this.agentModel.findById(match.agents.a.agentId),
+          this.agentModel.findById(match.agents.b.agentId),
+        ]);
+
+        if (!agentDocA || !agentDocB) {
+          this.logger.error(`Cannot recover match ${matchId}: agent doc(s) missing`);
+          await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
+          try { await this.settlement.refund(matchId); } catch {}
+          await Promise.all([
+            this.agentModel.updateOne({ _id: match.agents.a.agentId }, { status: 'idle' }),
+            this.agentModel.updateOne({ _id: match.agents.b.agentId }, { status: 'idle' }),
+          ]);
+          continue;
+        }
+
+        // Calculate elapsed time
+        const startedAt = match.startedAt ? match.startedAt.getTime() : match.createdAt.getTime();
+        const elapsedMs = Date.now() - startedAt;
+
+        // If match has exceeded total duration, end it immediately
+        if (elapsedMs > MATCH_DURATION_MS) {
+          this.logger.warn(`Match ${matchId} exceeded duration (${elapsedMs}ms), ending as timeout`);
+
+          let forcedWinner: Side | undefined;
+          const scores = match.scores;
+          if (gameType === 'marrakech' && match.marrakechState) {
+            const mkState = match.marrakechState as MarrakechGameState;
+            const pA = mkState.players[0]?.dirhams ?? 0;
+            const pB = mkState.players[1]?.dirhams ?? 0;
+            if (pA > pB) forcedWinner = 'a';
+            else if (pB > pA) forcedWinner = 'b';
+          } else if (scores) {
+            if (scores.a > scores.b) forcedWinner = 'a';
+            else if (scores.b > scores.a) forcedWinner = 'b';
+          }
+
+          // Build minimal active state so endMatch/resultHandler works
+          const minimalGameState: GameState = {
+            board: match.currentBoard as Board,
+            currentPlayer: match.currentTurn === 'a' ? 'B' as PlayerColor : 'W' as PlayerColor,
+            moveNumber: match.moveCount,
+            scores: {
+              black: scores?.a ?? 0,
+              white: scores?.b ?? 0,
+            },
+            gameOver: true,
+            winner: forcedWinner === 'a' ? 'B' : forcedWinner === 'b' ? 'W' : 'draw',
+          };
+
+          const minimalState: ActiveMatchState = {
+            matchId,
+            gameState: minimalGameState,
+            clock: null,
+            turnDeadline: 0,
+            timeouts: match.timeouts ?? { a: 0, b: 0 },
+            status: 'active',
+            agents: {
+              a: {
+                agentId: match.agents.a.agentId.toString(),
+                endpointUrl: agentDocA.endpointUrl,
+                piece: 'B' as PlayerColor,
+                walletAddress: agentDocA.walletAddress,
+                type: agentDocA.type,
+              },
+              b: {
+                agentId: match.agents.b.agentId.toString(),
+                endpointUrl: agentDocB.endpointUrl,
+                piece: 'W' as PlayerColor,
+                walletAddress: agentDocB.walletAddress,
+                type: agentDocB.type,
+              },
+            },
+            startedAt,
+          };
+
+          this.activeMatches.addMatch(minimalState);
+          this.matchGameTypes.set(matchId, gameType);
+          await this.endMatch(matchId, 'timeout', forcedWinner);
+          recovered++;
+          continue;
+        }
+
+        // Reconstruct in-memory state
+        const currentSide = match.currentTurn as Side;
+        const currentColor: PlayerColor = currentSide === 'a' ? 'B' : 'W';
+
+        let gameState: GameState;
+        if (gameType === 'marrakech' && match.marrakechState) {
+          const mkState = match.marrakechState as MarrakechGameState;
+          this.marrakechStates.set(matchId, mkState);
+          gameState = {
+            board: match.currentBoard as Board,
+            currentPlayer: currentColor,
+            moveNumber: match.moveCount,
+            scores: {
+              black: mkState.players[0]?.dirhams ?? 0,
+              white: mkState.players[1]?.dirhams ?? 0,
+            },
+            gameOver: false,
+            winner: null,
+          };
+        } else {
+          const scores = match.scores ?? { a: 0, b: 0 };
+          gameState = {
+            board: match.currentBoard as Board,
+            currentPlayer: currentColor,
+            moveNumber: match.moveCount,
+            scores: { black: scores.a, white: scores.b },
+            gameOver: false,
+            winner: null,
+          };
+        }
+
+        // Create clock with elapsed time
+        const clock = new MatchClock(
+          matchId,
+          {
+            onMatchTimeout: (mId: string) => this.handleMatchTimeout(mId),
+            onTurnTimeout: (mId: string) => {
+              this.logger.warn(`Turn timeout callback for ${mId}`);
+            },
+          },
+          MATCH_DURATION_MS,
+          TURN_TIMEOUT_MS,
+          elapsedMs,
+        );
+
+        const matchState: ActiveMatchState = {
+          matchId,
+          gameState,
+          clock,
+          turnDeadline: 0,
+          timeouts: match.timeouts ?? { a: 0, b: 0 },
+          status: 'active',
+          agents: {
+            a: {
+              agentId: match.agents.a.agentId.toString(),
+              endpointUrl: agentDocA.endpointUrl,
+              piece: 'B' as PlayerColor,
+              walletAddress: agentDocA.walletAddress,
+              type: agentDocA.type,
+              openclawUrl: agentDocA.openclawUrl,
+              openclawToken: agentDocA.openclawToken,
+              openclawAgentId: agentDocA.openclawAgentId,
+            },
+            b: {
+              agentId: match.agents.b.agentId.toString(),
+              endpointUrl: agentDocB.endpointUrl,
+              piece: 'W' as PlayerColor,
+              walletAddress: agentDocB.walletAddress,
+              type: agentDocB.type,
+              openclawUrl: agentDocB.openclawUrl,
+              openclawToken: agentDocB.openclawToken,
+              openclawAgentId: agentDocB.openclawAgentId,
+            },
+          },
+          startedAt,
+        };
+
+        this.activeMatches.addMatch(matchState);
+        this.matchGameTypes.set(matchId, gameType);
+        clock.startMatch();
+
+        // Resume the game loop
+        const loopFn = gameType === 'marrakech'
+          ? this.runMarrakechGameLoop(matchId)
+          : this.runGameLoop(matchId);
+
+        loopFn.catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Recovered game loop failed for ${matchId}: ${message}`);
+          this.endMatchWithError(matchId, message);
+        });
+
+        recovered++;
+        this.logger.log(`Recovered match ${matchId} (${gameType}, ${Math.round(elapsedMs / 1000)}s elapsed)`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to recover match ${matchId}: ${message}`);
+        await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
+        try { await this.settlement.refund(matchId); } catch {}
+        await Promise.all([
+          this.agentModel.updateOne({ _id: match.agents.a.agentId }, { status: 'idle' }),
+          this.agentModel.updateOne({ _id: match.agents.b.agentId }, { status: 'idle' }),
+        ]);
+      }
+    }
+
+    if (recovered > 0 || startingMatches.length > 0) {
+      this.logger.log(`Match recovery complete: ${recovered} active matches recovered, ${startingMatches.length} starting matches cancelled`);
+    }
   }
 
   async stopAll(): Promise<void> {

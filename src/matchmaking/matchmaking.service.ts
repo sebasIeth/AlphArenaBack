@@ -98,6 +98,12 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     return this.queue.size();
   }
 
+  getQueueEntries(gameType?: string): QueueEntryData[] {
+    const all = this.queue.getAll();
+    if (gameType) return all.filter((e) => e.gameType === gameType);
+    return all;
+  }
+
   private emitCountdown(gameType: string, remainingMs: number, waiting: QueueEntryData[]): void {
     this.eventBus.emit('matchmaking:countdown', {
       gameType,

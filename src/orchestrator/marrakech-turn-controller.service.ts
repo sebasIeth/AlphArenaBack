@@ -144,12 +144,15 @@ export class MarrakechTurnControllerService {
     await this.saveMove(matchId, agent.agentId, currentSide, mkState.turnNumber, state);
 
     const serializedBoard = this.serializeBoard(state.board);
+    const scores = { a: state.players[0]?.dirhams ?? 0, b: state.players[1]?.dirhams ?? 0 };
     await this.matchModel.updateOne(
       { _id: matchId },
       {
         currentBoard: serializedBoard,
         currentTurn: playerIndexToSide(state.currentPlayerIndex),
         moveCount: state.turnNumber,
+        scores,
+        marrakechState: state,
       },
     );
 

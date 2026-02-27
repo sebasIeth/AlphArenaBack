@@ -36,10 +36,11 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
 
   private async bootstrapAutoPlayAgents(): Promise<void> {
     try {
-      // Find stuck agents (queued/in_match with autoPlay=true) and clean them up
+      // Find stuck queued agents (autoPlay=true) and clean them up
+      // Note: in_match agents are NOT reset here — match recovery handles them
       const stuckAgents = await this.agentModel.find({
         autoPlay: true,
-        status: { $in: ['queued', 'in_match'] },
+        status: 'queued',
       });
 
       for (const agent of stuckAgents) {
@@ -54,7 +55,7 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
           { _id: { $in: stuckAgents.map((a) => a._id) } },
           { $set: { status: 'idle' } },
         );
-        this.logger.log(`Reset ${stuckAgents.length} stuck auto-play agents to idle`);
+        this.logger.log(`Reset ${stuckAgents.length} stuck queued auto-play agents to idle`);
       }
 
       // Find all idle auto-play agents and schedule re-queue with staggered delays

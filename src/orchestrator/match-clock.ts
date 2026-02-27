@@ -16,25 +16,30 @@ export class MatchClock {
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
   private matchStartedAt: number = 0;
 
+  private readonly elapsedMs: number;
+
   constructor(
     matchId: string,
     callbacks: MatchClockCallbacks,
     matchDurationMs: number = MATCH_DURATION_MS,
     turnTimeoutMs: number = TURN_TIMEOUT_MS,
+    elapsedMs: number = 0,
   ) {
     this.matchId = matchId;
     this.callbacks = callbacks;
     this.matchDurationMs = matchDurationMs;
     this.turnTimeoutMs = turnTimeoutMs;
+    this.elapsedMs = elapsedMs;
   }
 
   startMatch(): void {
-    this.matchStartedAt = Date.now();
-    this.logger.log(`Match clock started for ${this.matchId} (${this.matchDurationMs}ms)`);
+    this.matchStartedAt = Date.now() - this.elapsedMs;
+    const remainingMs = Math.max(0, this.matchDurationMs - this.elapsedMs);
+    this.logger.log(`Match clock started for ${this.matchId} (${remainingMs}ms remaining)`);
     this.matchTimer = setTimeout(() => {
       this.logger.warn(`Match timer expired for ${this.matchId}`);
       this.callbacks.onMatchTimeout(this.matchId);
-    }, this.matchDurationMs);
+    }, remainingMs);
   }
 
   startTurn(): number {

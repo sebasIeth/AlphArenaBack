@@ -118,4 +118,33 @@ export class MatchmakingController {
     const size = await this.matchmakingService.getQueueSize(gameType);
     return { queueSize: size, gameType: gameType ?? 'all' };
   }
+
+  @Get('queue')
+  async queue(@Query('gameType') gameType?: string) {
+    const entries = this.matchmakingService.getQueueEntries(gameType);
+    return {
+      queue: entries.map((e) => ({
+        agentId: e.agentId,
+        eloRating: e.eloRating,
+        gameType: e.gameType,
+        stakeAmount: e.stakeAmount,
+        status: e.status,
+        joinedAt: e.joinedAt,
+      })),
+      total: entries.length,
+      gameType: gameType ?? 'all',
+    };
+  }
+
+  @Get('playing-count')
+  async playingCount() {
+    const count = await this.agentModel.countDocuments({ status: 'in_match' });
+    return { playingCount: count };
+  }
+
+  @Get('auto-play-count')
+  async autoPlayCount() {
+    const count = await this.agentModel.countDocuments({ autoPlay: true });
+    return { autoPlayCount: count };
+  }
 }

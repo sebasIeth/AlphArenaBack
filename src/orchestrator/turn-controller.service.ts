@@ -108,6 +108,7 @@ export class TurnControllerService {
           currentBoard: newGameState.board,
           currentTurn: colorToSide(newGameState.currentPlayer),
           moveCount: newGameState.moveNumber,
+          scores: scoreAfter,
         },
       );
 

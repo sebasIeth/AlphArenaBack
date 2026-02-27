@@ -14,21 +14,23 @@ export class OrchestratorService implements OnModuleInit, OnModuleDestroy {
     private readonly eventBus: EventBusService,
   ) {}
 
-  onModuleInit(): void {
-    this.start();
+  async onModuleInit(): Promise<void> {
+    await this.start();
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.stop();
   }
 
-  start(): void {
+  async start(): Promise<void> {
     if (this.running) {
       this.logger.warn('OrchestratorService is already running');
       return;
     }
     this.running = true;
     this.logger.log('OrchestratorService started');
+
+    await this.matchManager.recoverActiveMatches();
   }
 
   async stop(): Promise<void> {

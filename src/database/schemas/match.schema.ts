@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 @Schema({ _id: false })
 export class MatchAgentSubDoc {
@@ -92,6 +92,15 @@ export class Match extends Document {
     default: () => ({ escrow: null, payout: null }),
   })
   txHashes: { escrow: string; payout: string };
+
+  @Prop({ type: Object, default: null })
+  scores: { a: number; b: number };
+
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null })
+  marrakechState: any;
+
+  @Prop({ type: Date, default: null })
+  turnStartedAt: Date;
 
   @Prop({ type: Date, default: null })
   startedAt: Date;

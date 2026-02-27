@@ -71,6 +71,10 @@ export class MatchmakingQueue {
     await this.queueEntryModel.updateOne({ agentId }, { $set: { status } });
   }
 
+  getAll(): QueueEntryData[] {
+    return [...this.entries];
+  }
+
   size(): number { return this.entries.length; }
 
   get(agentId: string): QueueEntryData | undefined {
