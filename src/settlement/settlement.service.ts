@@ -4,6 +4,8 @@ import {
   createPublicClient,
   createWalletClient,
   http,
+  formatEther,
+  formatUnits,
   type Chain,
   type PublicClient,
   type WalletClient,
@@ -42,6 +44,8 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
   private clients: SettlementClients | null = null;
   private contractAddress: Address | null = null;
   private usdcAddress: Address | null = null;
+  private rpcUrl: string | null = null;
+  private chain: Chain | null = null;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -78,6 +82,8 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
     const resolvedChainId = chainIdStr ? parseInt(chainIdStr, 10) : 84532;
     this.clients = this.createSettlementClient(rpcUrl, privateKey, resolvedChainId);
     this.contractAddress = contractAddr as Address;
+    this.rpcUrl = rpcUrl;
+    this.chain = this.resolveChain(resolvedChainId);
 
     // Resolve USDC address from config or chain ID
     this.usdcAddress = (usdcAddr as Address) ?? USDC_BY_CHAIN[resolvedChainId] ?? null;
@@ -100,6 +106,8 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
     this.clients = null;
     this.contractAddress = null;
     this.usdcAddress = null;
+    this.rpcUrl = null;
+    this.chain = null;
     this.logger.log('Settlement service stopped');
   }
 
@@ -364,5 +372,88 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`Failed to refund match: matchId=${matchId}, error=${message}`);
       throw error;
     }
+  }
+
+  // ── Agent Wallet Operations ───────────────────────────────────────
+
+  /**
+   * Read on-chain USDC balance for an agent wallet.
+   * Returns the balance as a human-readable string (e.g. "100.5").
+   */
+  async getAgentUsdcBalance(walletAddress: string): Promise<string> {
+    if (!this.clients || !this.usdcAddress) return '0';
+
+    const balance = await this.clients.publicClient.readContract({
+      address: this.usdcAddress,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [walletAddress as Address],
+    });
+
+    return formatUnits(balance as bigint, 6);
+  }
+
+  /**
+   * Read on-chain ETH balance for an agent wallet (needed for gas).
+   * Returns the balance as a human-readable string (e.g. "0.001").
+   */
+  async getAgentEthBalance(walletAddress: string): Promise<string> {
+    if (!this.clients) return '0';
+
+    const balance = await this.clients.publicClient.getBalance({
+      address: walletAddress as Address,
+    });
+
+    return formatEther(balance);
+  }
+
+  /**
+   * Transfer USDC from an agent's wallet to a destination address.
+   * Creates a temporary wallet client with the agent's private key.
+   *
+   * @returns The transaction hash, or `null` when running in no-op mode.
+   */
+  async transferUsdcFromAgent(
+    agentPrivateKey: string,
+    to: string,
+    amount: bigint,
+  ): Promise<string | null> {
+    if (!this.clients || !this.usdcAddress) {
+      this.logger.warn('transferUsdcFromAgent skipped — settlement service not initialised');
+      return null;
+    }
+
+    const { publicClient } = this.clients;
+    const agentAccount = privateKeyToAccount(agentPrivateKey as `0x${string}`);
+    const agentWalletClient = createWalletClient({
+      chain: this.chain!,
+      transport: http(this.rpcUrl!),
+      account: agentAccount,
+    });
+
+    this.logger.log(
+      `Transferring USDC from agent ${agentAccount.address} to ${to}, amount=${amount.toString()}`,
+    );
+
+    const { request } = await publicClient.simulateContract({
+      address: this.usdcAddress,
+      abi: erc20Abi,
+      functionName: 'transfer',
+      args: [to as Address, amount],
+      account: agentAccount,
+    });
+
+    const txHash = await agentWalletClient.writeContract(request);
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    this.logger.log(`USDC transfer confirmed: txHash=${txHash}`);
+    return txHash;
+  }
+
+  /**
+   * Get the platform wallet address (the operator account).
+   */
+  getPlatformWalletAddress(): string | null {
+    return this.clients?.account.address ?? null;
   }
 }

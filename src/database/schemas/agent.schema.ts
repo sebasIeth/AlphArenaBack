@@ -55,6 +55,12 @@ export class Agent extends Document {
 @Prop({ required: false })
   selfclawPublicKey: string;
 
+  @Prop({ required: false, index: true })
+  walletAddress: string;
+
+  @Prop({ required: false, select: false, set: (v: string) => v ? encrypt(v) : v, get: (v: string) => v ? decrypt(v) : v })
+  walletPrivateKey: string;
+
   @Prop({ default: 1200, index: true })
   eloRating: number;
 

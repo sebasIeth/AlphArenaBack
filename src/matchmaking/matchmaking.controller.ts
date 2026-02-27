@@ -8,6 +8,7 @@ import { AuthPayload } from '../common/types';
 import { Agent, Match } from '../database/schemas';
 import { IsString, MinLength, IsNumber, Min, Max, IsIn } from 'class-validator';
 import { MIN_STAKE, MAX_STAKE } from '../common/constants/game.constants';
+import { SettlementService } from '../settlement/settlement.service';
 
 class JoinQueueDto {
   @IsString() @MinLength(1) agentId: string;
@@ -26,6 +27,7 @@ export class MatchmakingController {
     private readonly matchmakingService: MatchmakingService,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
+    private readonly settlement: SettlementService,
   ) {}
 
   @Post('join')
@@ -36,6 +38,25 @@ export class MatchmakingController {
     if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (agent.status !== 'idle') throw new BadRequestException(`Agent cannot join queue because its status is "${agent.status}". It must be "idle".`);
     if (!agent.gameTypes.includes(dto.gameType)) throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
+    if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet. Please recreate the agent.');
+
+    // Verify agent wallet has sufficient on-chain balance
+    const [usdcBalance, ethBalance] = await Promise.all([
+      this.settlement.getAgentUsdcBalance(agent.walletAddress),
+      this.settlement.getAgentEthBalance(agent.walletAddress),
+    ]);
+
+    if (parseFloat(usdcBalance) < dto.stakeAmount) {
+      throw new BadRequestException(
+        `Insufficient USDC balance. Agent has ${usdcBalance} USDC but needs ${dto.stakeAmount}. Deposit USDC to ${agent.walletAddress}`,
+      );
+    }
+
+    if (parseFloat(ethBalance) < 0.0001) {
+      throw new BadRequestException(
+        `Insufficient ETH for gas. Agent has ${ethBalance} ETH but needs at least 0.0001. Deposit ETH to ${agent.walletAddress}`,
+      );
+    }
 
     agent.status = 'queued';
     await agent.save();

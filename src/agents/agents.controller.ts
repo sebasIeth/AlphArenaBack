@@ -1,11 +1,17 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, HttpCode } from '@nestjs/common';
-import { IsString, MinLength, IsUrl, IsOptional } from 'class-validator';
+import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, HttpCode, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { IsString, MinLength, IsUrl, IsOptional, IsNumber, Min } from 'class-validator';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { AgentsService } from './agents.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
+import { SettlementService } from '../settlement/settlement.service';
+import { Agent, User } from '../database/schemas';
+import { decrypt } from '../common/crypto.util';
+import { USDC_DECIMALS } from '../common/constants/game.constants';
 
 class TestConnectionDto {
   @IsString()
@@ -33,10 +39,21 @@ class ChatMessageDto {
   message: string;
 }
 
+class WithdrawDto {
+  @IsNumber()
+  @Min(0.01, { message: 'Minimum withdrawal is 0.01 USDC' })
+  amount: number;
+}
+
 @Controller('agents')
 @UseGuards(JwtAuthGuard)
 export class AgentsController {
-  constructor(private readonly agentsService: AgentsService) {}
+  constructor(
+    private readonly agentsService: AgentsService,
+    private readonly settlement: SettlementService,
+    @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+  ) {}
 
   @Post('test-connection')
   testConnection(@Body() dto: TestConnectionDto) {
@@ -87,6 +104,42 @@ export class AgentsController {
     @Body() dto: ChatMessageDto,
   ) {
     return this.agentsService.chatWithAgent(id, user.userId, dto.message);
+  }
+
+  @Get(':id/balance')
+  async getBalance(@CurrentUser() user: AuthPayload, @Param('id') id: string) {
+    const agent = await this.agentModel.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet');
+
+    const [usdc, eth] = await Promise.all([
+      this.settlement.getAgentUsdcBalance(agent.walletAddress),
+      this.settlement.getAgentEthBalance(agent.walletAddress),
+    ]);
+
+    return { walletAddress: agent.walletAddress, usdc, eth };
+  }
+
+  @Post(':id/withdraw')
+  async withdraw(
+    @CurrentUser() user: AuthPayload,
+    @Param('id') id: string,
+    @Body() dto: WithdrawDto,
+  ) {
+    const agent = await this.agentModel.findById(id).select('+walletPrivateKey');
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (!agent.walletAddress || !agent.walletPrivateKey) throw new BadRequestException('Agent does not have a wallet');
+
+    const userDoc = await this.userModel.findById(user.userId);
+    if (!userDoc?.walletAddress) throw new BadRequestException('User does not have a wallet address');
+
+    const amountUsdc = BigInt(Math.round(dto.amount * 10 ** USDC_DECIMALS));
+    const privKey = decrypt(agent.walletPrivateKey);
+
+    const txHash = await this.settlement.transferUsdcFromAgent(privKey, userDoc.walletAddress, amountUsdc);
+    return { txHash, amount: dto.amount, to: userDoc.walletAddress };
   }
 
   @Delete(':id')

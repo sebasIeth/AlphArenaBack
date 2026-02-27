@@ -8,6 +8,7 @@ import { DEFAULT_ELO } from '../common/constants/game.constants';
 import { OpenClawWsService } from '../openclaw-ws';
 import { AutoPlayService } from '../matchmaking/auto-play.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
 @Injectable()
 export class AgentsService {
@@ -47,6 +48,12 @@ export class AgentsService {
     } else {
       agentData.endpointUrl = dto.endpointUrl;
     }
+
+    // Generate a dedicated wallet for this agent
+    const privKey = generatePrivateKey();
+    const account = privateKeyToAccount(privKey);
+    agentData.walletAddress = account.address;
+    agentData.walletPrivateKey = privKey;
 
     const agent = await this.agentModel.create(agentData);
 
