@@ -13,7 +13,7 @@ import { SettlementService } from '../settlement/settlement.service';
 class JoinQueueDto {
   @IsString() @MinLength(1) agentId: string;
   @IsNumber() @Min(MIN_STAKE) @Max(MAX_STAKE) stakeAmount: number;
-  @IsIn(['reversi', 'marrakech']) gameType: string;
+  @IsIn(['reversi', 'marrakech', 'chess']) gameType: string;
 }
 
 class CancelQueueDto {
@@ -62,7 +62,7 @@ export class MatchmakingController {
     await agent.save();
 
     try {
-      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType);
+      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type);
       return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: dto.gameType, stakeAmount: dto.stakeAmount };
     } catch (err) {
       agent.status = 'idle';

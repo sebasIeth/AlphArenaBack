@@ -29,6 +29,21 @@ registry.set('reversi', {
   getWinner,
 });
 
+// Chess stub: real logic lives in ChessEngine; stubs exist for registry compatibility
+const EMPTY_CHESS_BOARD: Board = Array.from({ length: 8 }, () => Array(8).fill(0 as Piece)) as Board;
+
+registry.set('chess', {
+  createBoard: () => EMPTY_CHESS_BOARD,
+  cloneBoard: (board: Board) => board.map((row) => [...row]) as Board,
+  getOpponent: (player: Piece) => (player === 1 ? 2 : 1) as Piece,
+  getLegalMoves: () => [],
+  isValidMove: () => false,
+  getFlippedPieces: () => [],
+  getScore: () => ({ black: 0, white: 0 }),
+  isGameOver: () => false,
+  getWinner: () => 'draw',
+});
+
 export function getGame(gameType: string): GameImplementation {
   const impl = registry.get(gameType);
   if (!impl) {

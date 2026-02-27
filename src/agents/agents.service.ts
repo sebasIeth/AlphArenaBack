@@ -1,7 +1,7 @@
 import { Injectable, Inject, NotFoundException, ForbiddenException, ConflictException, BadRequestException, Logger, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Agent } from '../database/schemas';
+import { Agent, User } from '../database/schemas';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { DEFAULT_ELO } from '../common/constants/game.constants';
@@ -16,6 +16,7 @@ export class AgentsService {
 
   constructor(
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly openclawWs: OpenClawWsService,
     @Inject(forwardRef(() => AutoPlayService)) private readonly autoPlayService: AutoPlayService,
     @Inject(forwardRef(() => MatchmakingService)) private readonly matchmakingService: MatchmakingService,
@@ -41,19 +42,33 @@ export class AgentsService {
       stats: { wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0 },
     };
 
-    if (agentType === 'openclaw') {
+    if (agentType === 'human') {
+      // Human agents use the user's wallet instead of generating a new one
+      const user = await this.userModel.findById(userId).select('+walletPrivateKey');
+      if (!user || !user.walletAddress) {
+        throw new BadRequestException('User does not have a wallet. Please re-register.');
+      }
+      agentData.walletAddress = user.walletAddress;
+      agentData.walletPrivateKey = user.walletPrivateKey;
+    } else if (agentType === 'openclaw') {
       agentData.openclawUrl = dto.openclawUrl;
       agentData.openclawToken = dto.openclawToken;
       agentData.openclawAgentId = dto.openclawAgentId || 'main';
+
+      // Generate a dedicated wallet for this agent
+      const privKey = generatePrivateKey();
+      const account = privateKeyToAccount(privKey);
+      agentData.walletAddress = account.address;
+      agentData.walletPrivateKey = privKey;
     } else {
       agentData.endpointUrl = dto.endpointUrl;
-    }
 
-    // Generate a dedicated wallet for this agent
-    const privKey = generatePrivateKey();
-    const account = privateKeyToAccount(privKey);
-    agentData.walletAddress = account.address;
-    agentData.walletPrivateKey = privKey;
+      // Generate a dedicated wallet for this agent
+      const privKey = generatePrivateKey();
+      const account = privateKeyToAccount(privKey);
+      agentData.walletAddress = account.address;
+      agentData.walletPrivateKey = privKey;
+    }
 
     const agent = await this.agentModel.create(agentData);
 

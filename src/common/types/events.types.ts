@@ -14,6 +14,8 @@ export interface MatchStartedEvent {
   // Marrakech-specific
   assam?: { position: { row: number; col: number }; direction: string };
   players?: { id: number; name: string; dirhams: number; carpetsRemaining: number }[];
+  // Chess-specific
+  fen?: string;
 }
 
 export interface MatchMoveEvent {
@@ -31,6 +33,10 @@ export interface MatchMoveEvent {
   phase?: string;
   tribute?: { fromPlayerId: number; toPlayerId: number; amount: number } | null;
   players?: { id: number; name: string; dirhams: number; carpetsRemaining: number; eliminated: boolean }[];
+  // Chess-specific
+  chessMove?: string;
+  fen?: string;
+  isCheck?: boolean;
 }
 
 export interface MatchTimeoutEvent {
@@ -77,6 +83,17 @@ export interface MatchmakingMatchedEvent {
   agents: string[];
 }
 
+export interface MatchYourTurnEvent {
+  matchId: string;
+  side: 'a' | 'b';
+  gameType: string;
+  board: Board;
+  legalMoves: unknown[];
+  fen?: string;
+  moveNumber: number;
+  timeRemainingMs: number;
+}
+
 export interface EventBusEvents {
   'match:created': MatchCreatedEvent;
   'match:started': MatchStartedEvent;
@@ -87,6 +104,7 @@ export interface EventBusEvents {
   'agent:thinking': AgentThinkingEvent;
   'matchmaking:countdown': MatchmakingCountdownEvent;
   'matchmaking:matched': MatchmakingMatchedEvent;
+  'match:your_turn': MatchYourTurnEvent;
 }
 
 export type EventName = keyof EventBusEvents;

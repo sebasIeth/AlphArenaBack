@@ -1,7 +1,8 @@
 export const MATCH_DURATION_MS = 1_200_000;
 export const TURN_TIMEOUT_MS = 90_000;
 export const MAX_TIMEOUTS = 3;
-export const MIN_STAKE = 0;
+const isProd = process.env.NODE_ENV === 'production';
+export const MIN_STAKE = isProd ? 1 : 0;
 export const MAX_STAKE = 10_000;
 export const PLATFORM_FEE_PERCENT = 5;
 export const MATCHMAKING_INTERVAL_MS = 2_000;
@@ -20,5 +21,11 @@ export const PIECE = {
 export const AUTO_PLAY_REQUEUE_DELAY_MS = 10_000;
 export const AUTO_PLAY_MAX_CONSECUTIVE_ERRORS = 3;
 
-export const GAME_TYPES = ['reversi', 'marrakech'] as const;
+export const GAME_TYPES = ['reversi', 'marrakech', 'chess'] as const;
+
+export const CHESS_PIECE = {
+  EMPTY: 0,
+  W_PAWN: 1, W_KNIGHT: 2, W_BISHOP: 3, W_ROOK: 4, W_QUEEN: 5, W_KING: 6,
+  B_PAWN: 7, B_KNIGHT: 8, B_BISHOP: 9, B_ROOK: 10, B_QUEEN: 11, B_KING: 12,
+} as const;
 export type GameType = (typeof GAME_TYPES)[number];

@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { User } from '../database/schemas';
 import { ConfigService } from '../common/config/config.service';
 import { RegisterDto } from './dto/register.dto';
@@ -19,16 +20,11 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const { username, password, walletAddress, email } = dto;
+    const { username, password, email } = dto;
 
     const existingUsername = await this.userModel.findOne({ username });
     if (existingUsername) {
       throw new ConflictException('Username is already taken');
-    }
-
-    const existingWallet = await this.userModel.findOne({ walletAddress });
-    if (existingWallet) {
-      throw new ConflictException('Wallet address is already registered');
     }
 
     if (email) {
@@ -40,10 +36,15 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Auto-generate wallet for the user
+    const privKey = generatePrivateKey();
+    const account = privateKeyToAccount(privKey);
+
     const user = await this.userModel.create({
       username,
       passwordHash,
-      walletAddress,
+      walletAddress: account.address,
+      walletPrivateKey: privKey,
       email: email ?? null,
       balance: 0,
     });

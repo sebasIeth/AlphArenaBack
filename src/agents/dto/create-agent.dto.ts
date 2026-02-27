@@ -6,11 +6,11 @@ export class CreateAgentDto {
   @MaxLength(50, { message: 'Agent name must be at most 50 characters' })
   name: string;
 
-  @IsIn(['http', 'openclaw'], { message: 'Agent type must be "http" or "openclaw"' })
+  @IsIn(['http', 'openclaw', 'human'], { message: 'Agent type must be "http", "openclaw", or "human"' })
   @IsOptional()
   type?: string;
 
-  @ValidateIf((o) => !o.type || o.type === 'http')
+  @ValidateIf((o) => (!o.type || o.type === 'http') && o.type !== 'human')
   @IsUrl({}, { message: 'Endpoint URL must be a valid URL' })
   endpointUrl?: string;
 
@@ -31,6 +31,6 @@ export class CreateAgentDto {
   selfclawPublicKey?: string;
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one game type is required' })
-  @IsIn(['reversi', 'marrakech'], { each: true })
+  @IsIn(['reversi', 'marrakech', 'chess'], { each: true })
   gameTypes: string[];
 }

@@ -7,11 +7,13 @@ import { OrchestratorService } from './orchestrator.service';
 import { MatchManagerService } from './match-manager.service';
 import { TurnControllerService } from './turn-controller.service';
 import { MarrakechTurnControllerService } from './marrakech-turn-controller.service';
+import { ChessTurnControllerService } from './chess-turn-controller.service';
 import { ResultHandlerService } from './result-handler.service';
 import { AgentClientService } from './agent-client.service';
 import { OpenClawClientService } from './openclaw-client.service';
 import { EventBusService } from './event-bus.service';
 import { ActiveMatchesService } from './active-matches.service';
+import { HumanMoveService } from './human-move.service';
 
 @Module({
   imports: [
@@ -26,14 +28,16 @@ import { ActiveMatchesService } from './active-matches.service';
   providers: [
     EventBusService,
     ActiveMatchesService,
+    HumanMoveService,
     OpenClawClientService,
     AgentClientService,
     TurnControllerService,
     MarrakechTurnControllerService,
+    ChessTurnControllerService,
     ResultHandlerService,
     MatchManagerService,
     OrchestratorService,
   ],
-  exports: [OrchestratorService, EventBusService, ActiveMatchesService],
+  exports: [OrchestratorService, EventBusService, ActiveMatchesService, HumanMoveService],
 })
 export class OrchestratorModule {}

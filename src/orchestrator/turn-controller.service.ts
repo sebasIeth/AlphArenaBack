@@ -8,6 +8,7 @@ import { GameEngineService } from '../game-engine/game-engine.service';
 import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
+import { HumanMoveService } from './human-move.service';
 
 export interface TurnResult {
   gameOver: boolean;
@@ -31,6 +32,7 @@ export class TurnControllerService {
     private readonly activeMatches: ActiveMatchesService,
     private readonly eventBus: EventBusService,
     private readonly gameEngine: GameEngineService,
+    private readonly humanMoveService: HumanMoveService,
   ) {}
 
   async executeTurn(matchState: ActiveMatchState): Promise<TurnResult> {
@@ -70,9 +72,27 @@ export class TurnControllerService {
     const thinkingStart = Date.now();
 
     try {
-      const response = agent.type === 'openclaw'
-        ? await this.agentClient.requestReversiMoveFromOpenClaw(agent, moveRequest, { side: currentSide, agentId: agent.agentId })
-        : await this.agentClient.requestMove(agent.endpointUrl, moveRequest);
+      let response: { move: [number, number] };
+
+      if (agent.type === 'human') {
+        // Emit your_turn event so the frontend knows it's the human's turn
+        this.eventBus.emit('match:your_turn', {
+          matchId,
+          side: currentSide,
+          gameType: 'reversi',
+          board: gameState.board,
+          legalMoves,
+          moveNumber: gameState.moveNumber,
+          timeRemainingMs,
+        });
+
+        const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId, timeRemainingMs > 0 ? timeRemainingMs : undefined);
+        response = { move: humanMove as [number, number] };
+      } else if (agent.type === 'openclaw') {
+        response = await this.agentClient.requestReversiMoveFromOpenClaw(agent, moveRequest, { side: currentSide, agentId: agent.agentId });
+      } else {
+        response = await this.agentClient.requestMove(agent.endpointUrl, moveRequest);
+      }
 
       if (matchState.clock) matchState.clock.clearTurn();
 

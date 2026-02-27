@@ -35,7 +35,7 @@ export class Agent extends Document {
 
   @Prop({
     type: String,
-    enum: ['http', 'openclaw'],
+    enum: ['http', 'openclaw', 'human'],
     default: 'http',
   })
   type: string;

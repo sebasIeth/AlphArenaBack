@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
-import { MoveRequest, MoveResponse } from '../common/types';
+import { MoveRequest, MoveResponse, ChessMoveRequest, ChessMoveResponse } from '../common/types';
 import { OpenClawClientService, OpenClawAgentInfo } from './openclaw-client.service';
 
 export interface AgentInfo {
@@ -93,6 +93,35 @@ export class AgentClientService {
     );
 
     return result.move as MoveResponse;
+  }
+
+  async requestChessMoveFromOpenClaw(
+    agent: AgentInfo,
+    moveRequest: ChessMoveRequest,
+    context?: { side: 'a' | 'b'; agentId: string },
+  ): Promise<ChessMoveResponse> {
+    const openclawAgent: OpenClawAgentInfo = {
+      openclawUrl: agent.openclawUrl!,
+      openclawToken: agent.openclawToken!,
+      openclawAgentId: agent.openclawAgentId || 'main',
+    };
+
+    const result = await this.openclawClient.getChessMove(openclawAgent, {
+      matchId: moveRequest.matchId,
+      fen: moveRequest.fen,
+      board: moveRequest.board,
+      yourColor: moveRequest.yourColor,
+      legalMoves: moveRequest.legalMoves,
+      moveNumber: moveRequest.moveNumber,
+      isCheck: moveRequest.isCheck,
+      moveHistory: moveRequest.moveHistory,
+    }, context);
+
+    this.logger.log(
+      `OpenClaw chess agent responded (source=${result.source}, match=${moveRequest.matchId})`,
+    );
+
+    return result.move as ChessMoveResponse;
   }
 
   getOpenClawClient(): OpenClawClientService {

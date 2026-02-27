@@ -16,6 +16,7 @@ import { GameEngineService } from '../game-engine/game-engine.service';
 import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
+import { HumanMoveService } from './human-move.service';
 
 export interface MarrakechTurnResult {
   gameOver: boolean;
@@ -38,6 +39,7 @@ export class MarrakechTurnControllerService {
     private readonly activeMatches: ActiveMatchesService,
     private readonly eventBus: EventBusService,
     private readonly gameEngine: GameEngineService,
+    private readonly humanMoveService: HumanMoveService,
   ) {}
 
   async executeTurn(
@@ -172,6 +174,33 @@ export class MarrakechTurnControllerService {
     side?: 'a' | 'b',
   ): Promise<MarrakechMoveResponse | null> {
     if (matchState.clock) matchState.clock.startTurn();
+
+    // Route human agents through the HumanMoveService
+    if (agent?.type === 'human' && side && agent.agentId) {
+      try {
+        const board = this.serializeBoard(state.board);
+        this.eventBus.emit('match:your_turn', {
+          matchId,
+          side,
+          gameType: 'marrakech',
+          board,
+          legalMoves: phase === 'orient'
+            ? (validActions as any).directions
+            : phase === 'place'
+              ? state.validPlacements
+              : (validActions as any).borderOptions,
+          moveNumber: state.turnNumber,
+          timeRemainingMs: matchState.clock ? matchState.clock.getTimeRemainingMs() : 30_000,
+        });
+
+        const humanMove = await this.humanMoveService.waitForMove(matchId, side, agent.agentId);
+        if (matchState.clock) matchState.clock.clearTurn();
+        return humanMove as MarrakechMoveResponse;
+      } catch {
+        if (matchState.clock) matchState.clock.clearTurn();
+        return null;
+      }
+    }
 
     // Route OpenClaw agents through the OpenClaw client
     if (agent?.type === 'openclaw' && agent.openclawUrl && agent.openclawToken) {

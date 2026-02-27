@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { GameState, Move, GameResult, Board, PlayerColor, Piece, Position, MarrakechGameState } from '../common/types';
 import { getGame, GameImplementation } from './reversi/registry';
 import * as marrakechEngine from './marrakech';
+import { ChessEngine } from './chess';
 
 function colorToPiece(color: PlayerColor): Piece {
   return color === 'B' ? (1 as Piece) : (2 as Piece);
@@ -42,6 +43,11 @@ export class GameEngineService {
   /** Get the Marrakech engine functions */
   getMarrakechEngine(): typeof marrakechEngine {
     return marrakechEngine;
+  }
+
+  /** Create a new ChessEngine instance */
+  createChessEngine(fen?: string): ChessEngine {
+    return fen ? ChessEngine.fromFen(fen) : new ChessEngine();
   }
 }
 

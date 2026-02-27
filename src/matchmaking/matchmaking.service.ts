@@ -78,8 +78,8 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     this.onPairedCallback = cb;
   }
 
-  async joinQueue(agentId: string, userId: string, eloRating: number, stakeAmount: number, gameType: string): Promise<void> {
-    const entry: QueueEntryData = { agentId, userId, eloRating, stakeAmount, gameType, status: 'waiting', joinedAt: new Date() };
+  async joinQueue(agentId: string, userId: string, eloRating: number, stakeAmount: number, gameType: string, agentType?: string): Promise<void> {
+    const entry: QueueEntryData = { agentId, userId, eloRating, stakeAmount, gameType, status: 'waiting', joinedAt: new Date(), agentType };
     await this.queue.add(entry);
     this.logger.log(`Agent ${agentId} joined matchmaking queue`);
   }

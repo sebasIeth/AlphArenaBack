@@ -13,6 +13,7 @@ export interface QueueEntryData {
   gameType: string;
   status: QueueEntryStatus;
   joinedAt: Date;
+  agentType?: string;
 }
 
 @Injectable()

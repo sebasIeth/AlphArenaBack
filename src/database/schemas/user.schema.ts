@@ -1,10 +1,14 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { encrypt, decrypt } from '../../common/crypto.util';
 
 @Schema({ timestamps: true, collection: 'users', toJSON: { virtuals: true }, toObject: { virtuals: true } })
 export class User extends Document {
-  @Prop({ required: true, unique: true, index: true })
-  walletAddress: string;
+  @Prop({ type: String, required: false, unique: true, sparse: true, index: true, default: null })
+  walletAddress: string | null;
+
+  @Prop({ required: false, select: false, set: (v: string) => v ? encrypt(v) : v, get: (v: string) => v ? decrypt(v) : v })
+  walletPrivateKey: string;
 
   @Prop({ required: true, unique: true, index: true })
   username: string;

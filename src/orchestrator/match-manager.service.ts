@@ -3,16 +3,18 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
   GameState, Side, Board, Piece, PlayerColor,
-  MarrakechGameState,
+  MarrakechGameState, ChessState, ChessUciMove,
 } from '../common/types';
 import { MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, USDC_DECIMALS } from '../common/constants/game.constants';
 import { Match, Agent } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
 import { GameEngineService } from '../game-engine/game-engine.service';
+import { ChessEngine } from '../game-engine/chess';
 
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { TurnControllerService } from './turn-controller.service';
 import { MarrakechTurnControllerService } from './marrakech-turn-controller.service';
+import { ChessTurnControllerService } from './chess-turn-controller.service';
 import { ResultHandlerService } from './result-handler.service';
 import { EventBusService } from './event-bus.service';
 import { SettlementService } from '../settlement/settlement.service';
@@ -35,6 +37,8 @@ export class MatchManagerService {
   private readonly logger = new Logger(MatchManagerService.name);
   private readonly endedMatches = new Set<string>();
   private readonly marrakechStates = new Map<string, MarrakechGameState>();
+  private readonly chessEngines = new Map<string, ChessEngine>();
+  private readonly chessMoveHistories = new Map<string, ChessUciMove[]>();
   private readonly matchGameTypes = new Map<string, string>();
 
   constructor(
@@ -43,6 +47,7 @@ export class MatchManagerService {
     private readonly activeMatches: ActiveMatchesService,
     private readonly turnController: TurnControllerService,
     private readonly marrakechTurnController: MarrakechTurnControllerService,
+    private readonly chessTurnController: ChessTurnControllerService,
     private readonly resultHandler: ResultHandlerService,
     private readonly eventBus: EventBusService,
     private readonly settlement: SettlementService,
@@ -61,6 +66,10 @@ export class MatchManagerService {
 
     if (gameType === 'marrakech') {
       return this.createMarrakechMatch(agentA, agentB, stakeAmount, potAmount);
+    }
+
+    if (gameType === 'chess') {
+      return this.createChessMatch(agentA, agentB, stakeAmount, potAmount);
     }
 
     return this.createReversiMatch(agentA, agentB, stakeAmount, potAmount, gameType);
@@ -184,6 +193,69 @@ export class MatchManagerService {
     return matchId;
   }
 
+  private async createChessMatch(
+    agentA: MatchAgentInput,
+    agentB: MatchAgentInput,
+    stakeAmount: number,
+    potAmount: number,
+  ): Promise<string> {
+    const chessEngine = this.gameEngine.createChessEngine();
+    const initialBoard = chessEngine.getBoard();
+
+    const matchDoc = await this.matchModel.create({
+      gameType: 'chess',
+      agents: {
+        a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
+        b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
+      },
+      stakeAmount, potAmount, status: 'starting',
+      currentBoard: initialBoard, currentTurn: 'a', moveCount: 0,
+      timeouts: { a: 0, b: 0 }, txHashes: { escrow: null, payout: null },
+      chessState: { fen: chessEngine.getFen(), moveHistory: [], pgn: '' },
+    });
+
+    const matchId = matchDoc._id.toString();
+
+    // Side 'a' = White (first mover), Side 'b' = Black
+    const compatState: GameState = {
+      board: initialBoard as unknown as Board, currentPlayer: 'B', moveNumber: 0,
+      scores: { black: 0, white: 0 },
+      gameOver: false, winner: null,
+    };
+
+    const matchState: ActiveMatchState = {
+      matchId, gameState: compatState, clock: null, turnDeadline: 0,
+      timeouts: { a: 0, b: 0 }, status: 'starting',
+      agents: {
+        a: { agentId: agentA.agentId, endpointUrl: agentA.endpointUrl, piece: 'B', type: agentA.type, openclawUrl: agentA.openclawUrl, openclawToken: agentA.openclawToken, openclawAgentId: agentA.openclawAgentId },
+        b: { agentId: agentB.agentId, endpointUrl: agentB.endpointUrl, piece: 'W', type: agentB.type, openclawUrl: agentB.openclawUrl, openclawToken: agentB.openclawToken, openclawAgentId: agentB.openclawAgentId },
+      },
+      startedAt: Date.now(),
+    };
+
+    this.activeMatches.addMatch(matchState);
+    this.chessEngines.set(matchId, chessEngine);
+    this.chessMoveHistories.set(matchId, []);
+    this.matchGameTypes.set(matchId, 'chess');
+
+    await Promise.all([
+      this.agentModel.updateOne({ _id: agentA.agentId }, { status: 'in_match' }),
+      this.agentModel.updateOne({ _id: agentB.agentId }, { status: 'in_match' }),
+    ]);
+
+    this.eventBus.emit('match:created', {
+      matchId,
+      agents: {
+        a: { agentId: agentA.agentId, name: agentA.name },
+        b: { agentId: agentB.agentId, name: agentB.name },
+      },
+      gameType: 'chess', stakeAmount,
+    });
+
+    this.logger.log(`Chess match ${matchId} created`);
+    return matchId;
+  }
+
   async startMatch(matchId: string): Promise<void> {
     const matchState = this.activeMatches.getMatch(matchId);
     if (!matchState) throw new Error(`Cannot start match ${matchId}: not found.`);
@@ -301,11 +373,20 @@ export class MatchManagerService {
         id: p.id, name: p.name, dirhams: p.dirhams, carpetsRemaining: p.carpetsRemaining,
       }));
     }
+    if (gameType === 'chess') {
+      const chessEng = this.chessEngines.get(matchId);
+      if (chessEng) startedPayload.fen = chessEng.getFen();
+    }
     this.eventBus.emit('match:started', startedPayload);
 
-    const loopFn = gameType === 'marrakech'
-      ? this.runMarrakechGameLoop(matchId)
-      : this.runGameLoop(matchId);
+    let loopFn: Promise<void>;
+    if (gameType === 'marrakech') {
+      loopFn = this.runMarrakechGameLoop(matchId);
+    } else if (gameType === 'chess') {
+      loopFn = this.runChessGameLoop(matchId);
+    } else {
+      loopFn = this.runGameLoop(matchId);
+    }
 
     loopFn.catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -407,6 +488,54 @@ export class MatchManagerService {
     }
   }
 
+  private async runChessGameLoop(matchId: string): Promise<void> {
+    while (true) {
+      const matchState = this.activeMatches.getMatch(matchId);
+      if (!matchState || matchState.status !== 'active') return;
+
+      const chessEngine = this.chessEngines.get(matchId);
+      if (!chessEngine) {
+        await this.endMatchWithError(matchId, 'Chess engine state lost');
+        return;
+      }
+
+      const moveHistory = this.chessMoveHistories.get(matchId) ?? [];
+
+      if (chessEngine.isGameOver()) {
+        const winner = chessEngine.getWinner();
+        let winningSide: Side | undefined;
+        if (winner === 'white') winningSide = 'a';
+        else if (winner === 'black') winningSide = 'b';
+        const reason = chessEngine.isDraw() ? 'draw' : 'score';
+        await this.endMatch(matchId, reason, winningSide);
+        return;
+      }
+
+      if (matchState.timeouts.a >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'b'); return; }
+      if (matchState.timeouts.b >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'a'); return; }
+
+      await this.matchModel.updateOne({ _id: matchId }, { turnStartedAt: new Date() }).catch(() => {});
+      const turnResult = await this.chessTurnController.executeTurn(matchState, chessEngine, moveHistory);
+
+      const updated = this.activeMatches.getMatch(matchId);
+      if (!updated) return;
+
+      if (turnResult.gameOver) {
+        let winningSide: Side | undefined;
+        if (turnResult.winner === 'white') winningSide = 'a';
+        else if (turnResult.winner === 'black') winningSide = 'b';
+        const reason = turnResult.winner === 'draw' ? 'draw' : 'score';
+        await this.endMatch(matchId, reason, winningSide);
+        return;
+      }
+
+      if (updated.timeouts.a >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'b'); return; }
+      if (updated.timeouts.b >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'a'); return; }
+
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+
   async endMatch(matchId: string, reason: string, forcedWinnerSide?: Side): Promise<void> {
     if (this.endedMatches.has(matchId)) return;
     this.endedMatches.add(matchId);
@@ -418,6 +547,8 @@ export class MatchManagerService {
       this.logger.error(`Error ending match ${matchId}: ${message}`);
     } finally {
       this.marrakechStates.delete(matchId);
+      this.chessEngines.delete(matchId);
+      this.chessMoveHistories.delete(matchId);
       this.matchGameTypes.delete(matchId);
       setTimeout(() => this.endedMatches.delete(matchId), 5000);
     }
@@ -441,6 +572,13 @@ export class MatchManagerService {
             forcedWinner = scores[0].playerId === 0 ? 'a' : 'b';
           }
         }
+      }
+    } else if (gameType === 'chess') {
+      const chessEng = this.chessEngines.get(matchId);
+      if (chessEng) {
+        const materialScore = chessEng.getMaterialScore();
+        if (materialScore > 0) forcedWinner = 'a'; // white advantage
+        else if (materialScore < 0) forcedWinner = 'b'; // black advantage
       }
     } else {
       const { scores } = matchState.gameState;
@@ -478,6 +616,8 @@ export class MatchManagerService {
 
     this.activeMatches.removeMatch(matchId);
     this.marrakechStates.delete(matchId);
+    this.chessEngines.delete(matchId);
+    this.chessMoveHistories.delete(matchId);
     this.matchGameTypes.delete(matchId);
     setTimeout(() => this.endedMatches.delete(matchId), 5000);
   }
@@ -538,6 +678,12 @@ export class MatchManagerService {
             const pB = mkState.players[1]?.dirhams ?? 0;
             if (pA > pB) forcedWinner = 'a';
             else if (pB > pA) forcedWinner = 'b';
+          } else if (gameType === 'chess' && match.chessState) {
+            const chessState = match.chessState as ChessState;
+            const chessEng = this.gameEngine.createChessEngine(chessState.fen);
+            const materialScore = chessEng.getMaterialScore();
+            if (materialScore > 0) forcedWinner = 'a';
+            else if (materialScore < 0) forcedWinner = 'b';
           } else if (scores) {
             if (scores.a > scores.b) forcedWinner = 'a';
             else if (scores.b > scores.a) forcedWinner = 'b';
@@ -608,6 +754,27 @@ export class MatchManagerService {
             gameOver: false,
             winner: null,
           };
+        } else if (gameType === 'chess' && match.chessState) {
+          const chessState = match.chessState as ChessState;
+          // Rebuild chess engine from initial position and replay moves
+          // This ensures threefold repetition detection works correctly
+          const chessEng = this.gameEngine.createChessEngine();
+          const moveHistory: ChessUciMove[] = chessState.moveHistory || [];
+          for (const uci of moveHistory) {
+            chessEng.applyMoveUci(uci);
+          }
+          this.chessEngines.set(matchId, chessEng);
+          this.chessMoveHistories.set(matchId, [...moveHistory]);
+
+          const materialScore = chessEng.getMaterialScore();
+          gameState = {
+            board: chessEng.getBoard() as unknown as Board,
+            currentPlayer: currentColor,
+            moveNumber: moveHistory.length,
+            scores: { black: Math.max(0, materialScore), white: Math.max(0, -materialScore) },
+            gameOver: false,
+            winner: null,
+          };
         } else {
           const scores = match.scores ?? { a: 0, b: 0 };
           gameState = {
@@ -671,9 +838,14 @@ export class MatchManagerService {
         clock.startMatch();
 
         // Resume the game loop
-        const loopFn = gameType === 'marrakech'
-          ? this.runMarrakechGameLoop(matchId)
-          : this.runGameLoop(matchId);
+        let loopFn: Promise<void>;
+        if (gameType === 'marrakech') {
+          loopFn = this.runMarrakechGameLoop(matchId);
+        } else if (gameType === 'chess') {
+          loopFn = this.runChessGameLoop(matchId);
+        } else {
+          loopFn = this.runGameLoop(matchId);
+        }
 
         loopFn.catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
@@ -714,6 +886,10 @@ export class MatchManagerService {
 
   getMarrakechState(matchId: string): MarrakechGameState | undefined {
     return this.marrakechStates.get(matchId);
+  }
+
+  getChessEngine(matchId: string): ChessEngine | undefined {
+    return this.chessEngines.get(matchId);
   }
 
   getGameType(matchId: string): string {

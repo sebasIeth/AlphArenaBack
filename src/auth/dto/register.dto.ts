@@ -12,10 +12,6 @@ export class RegisterDto {
   @MaxLength(128, { message: 'Password must be at most 128 characters' })
   password: string;
 
-  @IsString()
-  @MinLength(1, { message: 'Wallet address is required' })
-  walletAddress: string;
-
   @IsOptional()
   @IsEmail({}, { message: 'Invalid email address' })
   email?: string;

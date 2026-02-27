@@ -7,6 +7,7 @@ import {
   AgentThinkingEvent,
   MatchmakingCountdownEvent,
   MatchmakingMatchedEvent,
+  MatchYourTurnEvent,
 } from '../common/types';
 import { EventBusService } from '../orchestrator/event-bus.service';
 import { RoomsService } from './rooms.service';
@@ -125,6 +126,22 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       });
     };
 
+    const onMatchYourTurn = (data: MatchYourTurnEvent): void => {
+      this.rooms.broadcast(data.matchId, {
+        type: 'match:your_turn',
+        data: {
+          matchId: data.matchId,
+          side: data.side,
+          gameType: data.gameType,
+          board: data.board,
+          legalMoves: data.legalMoves,
+          fen: data.fen,
+          moveNumber: data.moveNumber,
+          timeRemainingMs: data.timeRemainingMs,
+        },
+      });
+    };
+
     this.eventBus.on('match:started', onMatchStarted);
     this.eventBus.on('match:move', onMatchMove);
     this.eventBus.on('match:timeout', onMatchTimeout);
@@ -132,6 +149,7 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
     this.eventBus.on('agent:thinking', onAgentThinking);
     this.eventBus.on('matchmaking:countdown', onMatchmakingCountdown);
     this.eventBus.on('matchmaking:matched', onMatchmakingMatched);
+    this.eventBus.on('match:your_turn', onMatchYourTurn);
 
     this.handlers.set('match:started', onMatchStarted as (...args: unknown[]) => void);
     this.handlers.set('match:move', onMatchMove as (...args: unknown[]) => void);
@@ -140,6 +158,7 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
     this.handlers.set('agent:thinking', onAgentThinking as (...args: unknown[]) => void);
     this.handlers.set('matchmaking:countdown', onMatchmakingCountdown as (...args: unknown[]) => void);
     this.handlers.set('matchmaking:matched', onMatchmakingMatched as (...args: unknown[]) => void);
+    this.handlers.set('match:your_turn', onMatchYourTurn as (...args: unknown[]) => void);
 
     this.logger.log('Broadcaster started');
   }

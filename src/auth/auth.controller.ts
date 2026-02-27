@@ -31,4 +31,14 @@ export class AuthController {
     }
     return profile;
   }
+
+  @Get('me/wallet')
+  @UseGuards(JwtAuthGuard)
+  async wallet(@CurrentUser() user: AuthPayload) {
+    const profile = await this.authService.getProfile(user.userId);
+    if (!profile) {
+      throw new NotFoundException('User not found');
+    }
+    return { walletAddress: profile.user.walletAddress };
+  }
 }

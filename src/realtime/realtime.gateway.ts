@@ -7,11 +7,15 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger, UnauthorizedException } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { ConfigService } from '../common/config/config.service';
 import { RoomsService } from './rooms.service';
+import { HumanMoveService } from '../orchestrator/human-move.service';
+import { Agent } from '../database/schemas';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -26,6 +30,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private readonly configService: ConfigService,
     private readonly rooms: RoomsService,
+    private readonly humanMoveService: HumanMoveService,
+    @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
   ) {}
 
   handleConnection(client: Socket): void {
@@ -116,5 +122,43 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       type: 'pong',
       data: { timestamp: Date.now() },
     });
+  }
+
+  @SubscribeMessage('game:move')
+  async handleGameMove(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { matchId: string; move: unknown },
+  ): Promise<void> {
+    const user = (client as any).user as { userId: string; username: string } | undefined;
+    if (!user) {
+      client.emit('message', { type: 'error', data: { message: 'Not authenticated.' } });
+      return;
+    }
+
+    if (!data?.matchId || data.move === undefined) {
+      client.emit('message', { type: 'error', data: { message: 'matchId and move are required.' } });
+      return;
+    }
+
+    // Find the user's human agent that is currently playing in this match
+    const pendingAgentId = this.humanMoveService.getPendingAgentId(data.matchId);
+    if (!pendingAgentId) {
+      client.emit('message', { type: 'error', data: { message: 'No pending move for this match.' } });
+      return;
+    }
+
+    // Verify the user owns the agent
+    const agent = await this.agentModel.findById(pendingAgentId);
+    if (!agent || agent.userId.toString() !== user.userId || agent.type !== 'human') {
+      client.emit('message', { type: 'error', data: { message: 'You are not the human player in this match.' } });
+      return;
+    }
+
+    const submitted = this.humanMoveService.submitMove(data.matchId, pendingAgentId, data.move);
+    if (submitted) {
+      client.emit('message', { type: 'game:move_accepted', data: { matchId: data.matchId } });
+    } else {
+      client.emit('message', { type: 'error', data: { message: 'Failed to submit move.' } });
+    }
   }
 }

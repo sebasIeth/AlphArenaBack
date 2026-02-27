@@ -99,6 +99,9 @@ export class Match extends Document {
   @Prop({ type: MongooseSchema.Types.Mixed, default: null })
   marrakechState: any;
 
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null })
+  chessState: any;
+
   @Prop({ type: Date, default: null })
   turnStartedAt: Date;
 

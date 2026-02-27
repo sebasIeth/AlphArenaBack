@@ -4,3 +4,4 @@ export * from './match.types';
 export * from './user.types';
 export * from './events.types';
 export * from './marrakech.types';
+export * from './chess.types';

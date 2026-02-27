@@ -5,6 +5,7 @@ import {
   MarrakechValidActions,
   MarrakechDirection,
   MarrakechCarpetPlacement,
+  ChessUciMove,
 } from '../common/types';
 import { OpenClawWsService } from '../openclaw-ws';
 import { EventBusService } from './event-bus.service';
@@ -197,6 +198,59 @@ export class OpenClawClientService {
 
       default:
         return 'Respond with JSON: {"thinking":"skip","action":{"type":"skip"}}';
+    }
+  }
+
+  // ─── Chess ──────────────────────────────────────────────────────────────
+
+  async getChessMove(
+    agent: OpenClawAgentInfo,
+    gameState: {
+      matchId: string;
+      fen: string;
+      board: number[][];
+      yourColor: 'white' | 'black';
+      legalMoves: ChessUciMove[];
+      moveNumber: number;
+      isCheck: boolean;
+      moveHistory: ChessUciMove[];
+    },
+    context?: { side: 'a' | 'b'; agentId: string },
+  ): Promise<OpenClawMoveResult> {
+    const { matchId, fen, yourColor, legalMoves, moveNumber, isCheck, moveHistory } = gameState;
+
+    const checkStr = isCheck ? ' You are in CHECK!' : '';
+    const historyStr = moveHistory.length > 0
+      ? `\nMove history: ${moveHistory.join(' ')}`
+      : '';
+
+    const message = `It's your turn in Chess (move #${moveNumber}). You play as ${yourColor}.${checkStr}\n\nFEN: ${fen}${historyStr}\n\nLegal moves (UCI format): ${legalMoves.join(', ')}\n\nYou MUST respond in English. Briefly explain your reasoning and then respond with JSON: {"thinking":"your brief reasoning","move":"e2e4"}`;
+
+    try {
+      const raw = await this.callOpenClaw(agent, message);
+
+      if (context) {
+        this.eventBus.emit('agent:thinking', {
+          matchId, side: context.side, agentId: context.agentId,
+          raw, moveNumber,
+        });
+      }
+
+      const parsed = extractJSON(raw);
+
+      if (parsed?.move && typeof parsed.move === 'string') {
+        const move = parsed.move as string;
+        if (legalMoves.includes(move)) {
+          return { move: { move }, source: 'ai', raw };
+        }
+      }
+
+      this.logger.warn(`OpenClaw chess: invalid move, using fallback. Raw: ${raw?.substring(0, 100)}`);
+      return { move: { move: legalMoves[0] }, source: 'fallback', raw };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`OpenClaw chess error: ${errMsg}`);
+      return { move: { move: legalMoves[0] }, source: 'error', error: errMsg };
     }
   }
 

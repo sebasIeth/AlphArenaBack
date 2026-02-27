@@ -59,8 +59,10 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
       }
 
       // Find all idle auto-play agents and schedule re-queue with staggered delays
+      // Skip human agents — they are controlled by the user via /play endpoints
       const agents = await this.agentModel.find({
         autoPlay: true,
+        type: { $ne: 'human' },
         status: 'idle',
         autoPlayConsecutiveErrors: { $lt: AUTO_PLAY_MAX_CONSECUTIVE_ERRORS },
       });
@@ -161,6 +163,7 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!agent.autoPlay) return;
+    if (agent.type === 'human') return;
     if (agent.status !== 'idle') return;
     if (agent.status === ('disabled' as string)) return;
     if (agent.autoPlayConsecutiveErrors >= AUTO_PLAY_MAX_CONSECUTIVE_ERRORS) return;
@@ -183,6 +186,7 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
         agent.eloRating,
         stakeAmount,
         gameType,
+        agent.type,
       );
 
       this.logger.log(`Auto-play: agent ${agentId} re-queued for ${gameType} (stake=${stakeAmount})`);
