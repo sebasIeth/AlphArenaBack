@@ -1,13 +1,17 @@
-import { Injectable, ConflictException, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import * as crypto from 'crypto';
 import { User } from '../database/schemas';
 import { ConfigService } from '../common/config/config.service';
+import { MailService } from '../mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AuthPayload } from '../common/types';
 
 @Injectable()
@@ -17,6 +21,7 @@ export class AuthService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -90,6 +95,52 @@ export class AuthService {
       return null;
     }
     return { user: this.sanitizeUser(user) };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const genericMessage = 'If an account with that email exists, a reset link has been sent.';
+
+    const user = await this.userModel.findOne({ email: dto.email });
+    if (!user) {
+      return { message: genericMessage };
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+    await user.save();
+
+    try {
+      await this.mailService.sendPasswordResetEmail(user.email!, user.username, rawToken);
+    } catch {
+      this.logger.error(`Failed to send reset email to ${user.email}`);
+    }
+
+    return { message: genericMessage };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const hashedToken = crypto.createHash('sha256').update(dto.token).digest('hex');
+
+    const user = await this.userModel.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    user.passwordHash = await bcrypt.hash(dto.password, 12);
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    this.logger.log(`Password reset successful for user: ${user.username}`);
+
+    return { message: 'Password has been reset successfully' };
   }
 
   private generateToken(payload: AuthPayload): string {

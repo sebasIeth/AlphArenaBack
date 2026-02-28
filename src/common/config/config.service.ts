@@ -78,6 +78,30 @@ export class ConfigService {
     return parseInt(process.env.ELO_MATCH_RANGE || '200', 10);
   }
 
+  get smtpHost(): string {
+    return process.env.SMTP_HOST || 'smtp.gmail.com';
+  }
+
+  get smtpPort(): number {
+    return parseInt(process.env.SMTP_PORT || '587', 10);
+  }
+
+  get smtpUser(): string {
+    return process.env.SMTP_USER || '';
+  }
+
+  get smtpPass(): string {
+    return process.env.SMTP_PASS || '';
+  }
+
+  get smtpFrom(): string {
+    return process.env.SMTP_FROM || '"AlphArena" <noreply@alpharena.com>';
+  }
+
+  get frontendUrl(): string {
+    return process.env.FRONTEND_URL || 'http://localhost:3000';
+  }
+
   private getRequired(key: string): string {
     const value = process.env[key];
     if (!value) {
