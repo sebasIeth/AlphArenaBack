@@ -18,6 +18,12 @@ export class User extends Document {
   @Prop({ default: 0 })
   balance: number;
 
+  @Prop({ type: String, default: null })
+  resetPasswordToken: string | null;
+
+  @Prop({ type: Date, default: null })
+  resetPasswordExpires: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
 }
