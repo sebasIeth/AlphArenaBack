@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git pull:*)",
       "Bash(git fetch:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

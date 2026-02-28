@@ -196,20 +196,23 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.logger.log(`Approving USDC spend for Arena contract: spender=${spender}, amount=${amount.toString()}`);
+    // Approve max uint256 so we only need to do this once
+    const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+
+    this.logger.log(`Approving max USDC spend for Arena contract: spender=${spender}`);
 
     const { request } = await publicClient.simulateContract({
       address: this.usdcAddress!,
       abi: erc20Abi,
       functionName: 'approve',
-      args: [spender, amount],
+      args: [spender, maxApproval],
       account,
     });
 
     const txHash = await walletClient.writeContract(request);
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    await publicClient.waitForTransactionReceipt({ hash: txHash, confirmations: 2 });
 
-    this.logger.log(`USDC approval confirmed: txHash=${txHash}`);
+    this.logger.log(`USDC max approval confirmed: txHash=${txHash}`);
   }
 
   // ── Public API ───────────────────────────────────────────────────

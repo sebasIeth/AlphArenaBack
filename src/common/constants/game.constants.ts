@@ -1,6 +1,6 @@
 export const MATCH_DURATION_MS = 1_200_000;
-export const TURN_TIMEOUT_MS = 90_000;
-export const MAX_TIMEOUTS = 3;
+export const TURN_TIMEOUT_MS = 20_000;
+export const MAX_TIMEOUTS = 2;
 const isProd = process.env.NODE_ENV === 'production';
 export const MIN_STAKE = 1;
 export const MAX_STAKE = 10_000;
