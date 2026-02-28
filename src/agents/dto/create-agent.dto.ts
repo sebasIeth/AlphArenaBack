@@ -31,6 +31,6 @@ export class CreateAgentDto {
   selfclawPublicKey?: string;
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one game type is required' })
-  @IsIn(['reversi', 'marrakech', 'chess'], { each: true })
+  @IsIn(['marrakech', 'chess'], { each: true })
   gameTypes: string[];
 }

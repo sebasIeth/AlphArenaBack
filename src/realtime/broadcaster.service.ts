@@ -41,6 +41,7 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       };
       if (data.assam) payload.assam = data.assam;
       if (data.players) payload.players = data.players;
+      if (data.fen) payload.fen = data.fen;
       this.rooms.broadcast(data.matchId, { type: 'match:start', data: payload });
     };
 
@@ -61,6 +62,10 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.phase) payload.phase = data.phase;
       if (data.tribute !== undefined) payload.tribute = data.tribute;
       if (data.players) payload.players = data.players;
+      // Chess-specific fields
+      if (data.chessMove) payload.chessMove = data.chessMove;
+      if (data.fen) payload.fen = data.fen;
+      if (data.isCheck !== undefined) payload.isCheck = data.isCheck;
       this.rooms.broadcast(data.matchId, { type: 'match:move', data: payload });
     };
 

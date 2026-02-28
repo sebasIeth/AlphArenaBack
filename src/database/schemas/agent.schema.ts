@@ -79,7 +79,7 @@ export class Agent extends Document {
   })
   status: string;
 
-  @Prop({ type: [String], default: ['reversi'] })
+  @Prop({ type: [String], default: ['chess'] })
   gameTypes: string[];
 
   @Prop({ default: false })

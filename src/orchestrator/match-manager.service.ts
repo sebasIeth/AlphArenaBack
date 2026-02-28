@@ -58,7 +58,7 @@ export class MatchManagerService {
     agentA: MatchAgentInput,
     agentB: MatchAgentInput,
     stakeAmount: number,
-    gameType: string = 'reversi',
+    gameType: string = 'chess',
   ): Promise<string> {
     this.logger.log(`Creating match: ${agentA.agentId} vs ${agentB.agentId}, gameType=${gameType}`);
 
@@ -109,7 +109,7 @@ export class MatchManagerService {
     };
 
     this.activeMatches.addMatch(matchState);
-    this.matchGameTypes.set(matchId, 'reversi');
+    this.matchGameTypes.set(matchId, gameType);
 
     await Promise.all([
       this.agentModel.updateOne({ _id: agentA.agentId }, { status: 'in_match' }),
@@ -263,7 +263,7 @@ export class MatchManagerService {
       throw new Error(`Cannot start match ${matchId}: status is "${matchState.status}".`);
     }
 
-    const gameType = this.matchGameTypes.get(matchId) ?? 'reversi';
+    const gameType = this.matchGameTypes.get(matchId) ?? 'chess';
     this.logger.log(`Starting match ${matchId} (${gameType})`);
 
     // Fetch match doc for potAmount and user IDs
@@ -303,52 +303,57 @@ export class MatchManagerService {
     });
 
     // Transfer stake from each agent wallet to platform, then escrow
-    const stakeAmountUsdc = BigInt(matchDoc.stakeAmount) * BigInt(10 ** USDC_DECIMALS);
-    const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** USDC_DECIMALS);
-    const platformWallet = this.settlement.getPlatformWalletAddress();
+    // Skip on-chain settlement for zero-stake matches
+    if (matchDoc.stakeAmount > 0) {
+      const stakeAmountUsdc = BigInt(matchDoc.stakeAmount) * BigInt(10 ** USDC_DECIMALS);
+      const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** USDC_DECIMALS);
+      const platformWallet = this.settlement.getPlatformWalletAddress();
 
-    if (!platformWallet) {
-      this.logger.error(`Platform wallet not available for match ${matchId}`);
-      await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
-      await Promise.all([
-        this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
-        this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
-      ]);
-      this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: 'Platform wallet not configured' });
-      this.activeMatches.removeMatch(matchId);
-      this.marrakechStates.delete(matchId);
-      this.matchGameTypes.delete(matchId);
-      return;
-    }
-
-    try {
-      const privKeyA = agentDocA.walletPrivateKey ? decrypt(agentDocA.walletPrivateKey) : null;
-      const privKeyB = agentDocB.walletPrivateKey ? decrypt(agentDocB.walletPrivateKey) : null;
-
-      if (!privKeyA || !privKeyB) {
-        throw new Error('Missing agent wallet private key');
+      if (!platformWallet) {
+        this.logger.error(`Platform wallet not available for match ${matchId}`);
+        await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
+        await Promise.all([
+          this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
+          this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
+        ]);
+        this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: 'Platform wallet not configured' });
+        this.activeMatches.removeMatch(matchId);
+        this.marrakechStates.delete(matchId);
+        this.matchGameTypes.delete(matchId);
+        return;
       }
 
-      await this.settlement.transferUsdcFromAgent(privKeyA, platformWallet, stakeAmountUsdc);
-      await this.settlement.transferUsdcFromAgent(privKeyB, platformWallet, stakeAmountUsdc);
+      try {
+        const privKeyA = agentDocA.walletPrivateKey ? decrypt(agentDocA.walletPrivateKey) : null;
+        const privKeyB = agentDocB.walletPrivateKey ? decrypt(agentDocB.walletPrivateKey) : null;
 
-      const escrowTxHash = await this.settlement.escrow(
-        matchId, walletA, walletB, escrowAmount,
-      );
-      await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': escrowTxHash });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Escrow failed for match ${matchId}: ${message}`);
-      await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
-      await Promise.all([
-        this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
-        this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
-      ]);
-      this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: `Escrow failed: ${message}` });
-      this.activeMatches.removeMatch(matchId);
-      this.marrakechStates.delete(matchId);
-      this.matchGameTypes.delete(matchId);
-      return;
+        if (!privKeyA || !privKeyB) {
+          throw new Error('Missing agent wallet private key');
+        }
+
+        await this.settlement.transferUsdcFromAgent(privKeyA, platformWallet, stakeAmountUsdc);
+        await this.settlement.transferUsdcFromAgent(privKeyB, platformWallet, stakeAmountUsdc);
+
+        const escrowTxHash = await this.settlement.escrow(
+          matchId, walletA, walletB, escrowAmount,
+        );
+        await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': escrowTxHash });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Escrow failed for match ${matchId}: ${message}`);
+        await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
+        await Promise.all([
+          this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
+          this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
+        ]);
+        this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: `Escrow failed: ${message}` });
+        this.activeMatches.removeMatch(matchId);
+        this.marrakechStates.delete(matchId);
+        this.matchGameTypes.delete(matchId);
+        return;
+      }
+    } else {
+      this.logger.log(`Skipping escrow for zero-stake match ${matchId}`);
     }
 
     const clock = new MatchClock(matchId, {
@@ -559,7 +564,7 @@ export class MatchManagerService {
     const matchState = this.activeMatches.getMatch(matchId);
     if (!matchState) return;
 
-    const gameType = this.matchGameTypes.get(matchId) ?? 'reversi';
+    const gameType = this.matchGameTypes.get(matchId) ?? 'chess';
     let forcedWinner: Side | undefined;
 
     if (gameType === 'marrakech') {
@@ -642,7 +647,7 @@ export class MatchManagerService {
 
     for (const match of activeMatches) {
       const matchId = match._id.toString();
-      const gameType = match.gameType ?? 'reversi';
+      const gameType = match.gameType ?? 'chess';
 
       try {
         // Load agent docs for endpoints, type, openclaw fields, walletAddress
@@ -893,6 +898,6 @@ export class MatchManagerService {
   }
 
   getGameType(matchId: string): string {
-    return this.matchGameTypes.get(matchId) ?? 'reversi';
+    return this.matchGameTypes.get(matchId) ?? 'chess';
   }
 }

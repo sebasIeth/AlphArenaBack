@@ -61,7 +61,7 @@ export class TurnControllerService {
 
     const moveRequest: MoveRequest = {
       matchId,
-      gameType: 'reversi',
+      gameType: 'chess',
       board: gameState.board.map((row) => [...row]),
       yourPiece: agent.piece,
       legalMoves,
@@ -79,7 +79,7 @@ export class TurnControllerService {
         this.eventBus.emit('match:your_turn', {
           matchId,
           side: currentSide,
-          gameType: 'reversi',
+          gameType: 'chess',
           board: gameState.board,
           legalMoves,
           moveNumber: gameState.moveNumber,

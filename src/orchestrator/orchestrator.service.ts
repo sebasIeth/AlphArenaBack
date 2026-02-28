@@ -52,7 +52,7 @@ export class OrchestratorService implements OnModuleInit, OnModuleDestroy {
     agentA: MatchAgentInput,
     agentB: MatchAgentInput,
     stakeAmount: number,
-    gameType: string = 'reversi',
+    gameType: string = 'chess',
   ): Promise<string> {
     if (!this.running) throw new Error('OrchestratorService is not running.');
     const matchId = await this.matchManager.createMatch(agentA, agentB, stakeAmount, gameType);

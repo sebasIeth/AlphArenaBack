@@ -2,7 +2,7 @@ export const MATCH_DURATION_MS = 1_200_000;
 export const TURN_TIMEOUT_MS = 90_000;
 export const MAX_TIMEOUTS = 3;
 const isProd = process.env.NODE_ENV === 'production';
-export const MIN_STAKE = isProd ? 1 : 0;
+export const MIN_STAKE = 1;
 export const MAX_STAKE = 10_000;
 export const PLATFORM_FEE_PERCENT = 5;
 export const MATCHMAKING_INTERVAL_MS = 2_000;
@@ -21,7 +21,7 @@ export const PIECE = {
 export const AUTO_PLAY_REQUEUE_DELAY_MS = 10_000;
 export const AUTO_PLAY_MAX_CONSECUTIVE_ERRORS = 3;
 
-export const GAME_TYPES = ['reversi', 'marrakech', 'chess'] as const;
+export const GAME_TYPES = ['marrakech', 'chess'] as const;
 
 export const CHESS_PIECE = {
   EMPTY: 0,

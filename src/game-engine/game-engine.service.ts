@@ -14,7 +14,7 @@ function pieceToColor(piece: Piece): PlayerColor {
 
 @Injectable()
 export class GameEngineService {
-  private readonly defaultEngine = new GameEngine('reversi');
+  private readonly defaultEngine = new GameEngine('chess');
 
   createEngine(gameType: string): GameEngine {
     return new GameEngine(gameType);

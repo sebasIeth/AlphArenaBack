@@ -13,7 +13,7 @@ import { SettlementService } from '../settlement/settlement.service';
 class JoinQueueDto {
   @IsString() @MinLength(1) agentId: string;
   @IsNumber() @Min(MIN_STAKE) @Max(MAX_STAKE) stakeAmount: number;
-  @IsIn(['reversi', 'marrakech', 'chess']) gameType: string;
+  @IsIn(['marrakech', 'chess']) gameType: string;
 }
 
 class CancelQueueDto {

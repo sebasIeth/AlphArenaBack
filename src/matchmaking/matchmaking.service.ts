@@ -135,29 +135,35 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         const pairs = findPairs(waiting);
         if (pairs.length === 0) continue;
 
-        const countdown = this.countdowns.get(gameType);
-        const now = Date.now();
+        // Exactly 2 agents — pair instantly, no countdown
+        if (waiting.length === 2 && pairs.length === 1) {
+          this.countdowns.delete(gameType);
+          this.logger.log(`Instant pairing for ${gameType} — exactly 2 agents`);
+        } else {
+          const countdown = this.countdowns.get(gameType);
+          const now = Date.now();
 
-        if (!countdown) {
-          // Start a new countdown
-          this.countdowns.set(gameType, { startedAt: now });
-          this.logger.log(`Countdown started for ${gameType} with ${waiting.length} agents`);
-          this.emitCountdown(gameType, MATCHMAKING_COUNTDOWN_MS, waiting);
-          continue;
+          if (!countdown) {
+            // Start a new countdown
+            this.countdowns.set(gameType, { startedAt: now });
+            this.logger.log(`Countdown started for ${gameType} with ${waiting.length} agents`);
+            this.emitCountdown(gameType, MATCHMAKING_COUNTDOWN_MS, waiting);
+            continue;
+          }
+
+          const elapsed = now - countdown.startedAt;
+          const remainingMs = MATCHMAKING_COUNTDOWN_MS - elapsed;
+
+          if (remainingMs > 0) {
+            // Countdown still active — emit tick
+            this.emitCountdown(gameType, remainingMs, waiting);
+            continue;
+          }
+
+          // Countdown expired — run pairing on the full pool
+          this.countdowns.delete(gameType);
+          this.logger.log(`Countdown expired for ${gameType}, pairing ${pairs.length} pair(s)`);
         }
-
-        const elapsed = now - countdown.startedAt;
-        const remainingMs = MATCHMAKING_COUNTDOWN_MS - elapsed;
-
-        if (remainingMs > 0) {
-          // Countdown still active — emit tick
-          this.emitCountdown(gameType, remainingMs, waiting);
-          continue;
-        }
-
-        // Countdown expired — run pairing on the full pool
-        this.countdowns.delete(gameType);
-        this.logger.log(`Countdown expired for ${gameType}, pairing ${pairs.length} pair(s)`);
 
         for (const [entryA, entryB] of pairs) {
           try {

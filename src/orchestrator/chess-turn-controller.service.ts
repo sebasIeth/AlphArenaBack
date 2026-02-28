@@ -150,7 +150,7 @@ export class ChessTurnControllerService {
         chessMove: uciMove,
         fen: chessEngine.getFen(),
         isCheck: chessEngine.isCheck(),
-      } as any);
+      });
 
       await this.saveMove(matchId, agent.agentId, currentSide, moveHistory.length, uciMove, boardRaw, scoreAfter, thinkingTimeMs);
 

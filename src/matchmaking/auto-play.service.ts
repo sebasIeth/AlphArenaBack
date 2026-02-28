@@ -168,7 +168,8 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
     if (agent.status === ('disabled' as string)) return;
     if (agent.autoPlayConsecutiveErrors >= AUTO_PLAY_MAX_CONSECUTIVE_ERRORS) return;
 
-    const gameType = agent.gameTypes[0];
+    // Prioritize chess if agent supports it
+    const gameType = agent.gameTypes.includes('chess') ? 'chess' : agent.gameTypes[0];
     if (!gameType) {
       this.logger.warn(`Auto-play re-queue: agent ${agentId} has no game types`);
       return;
