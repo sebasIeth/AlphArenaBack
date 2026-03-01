@@ -4,8 +4,12 @@ import { Model } from 'mongoose';
 import {
   GameState, Side, Board, Piece, PlayerColor,
   MarrakechGameState, ChessState, ChessUciMove,
+  PokerGameState,
 } from '../common/types';
-import { MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, TOKEN_DECIMALS } from '../common/constants/game.constants';
+import {
+  MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, TOKEN_DECIMALS,
+  POKER_SMALL_BLIND, POKER_BIG_BLIND,
+} from '../common/constants/game.constants';
 import { Match, Agent } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
 import { GameEngineService } from '../game-engine/game-engine.service';
@@ -15,6 +19,8 @@ import { ActiveMatchesService, ActiveMatchState } from './active-matches.service
 import { TurnControllerService } from './turn-controller.service';
 import { MarrakechTurnControllerService } from './marrakech-turn-controller.service';
 import { ChessTurnControllerService } from './chess-turn-controller.service';
+import { PokerTurnControllerService } from './poker-turn-controller.service';
+import { createInitialState as createPokerInitialState, isMatchOver as isPokerMatchOver } from '../game-engine/poker';
 import { ResultHandlerService } from './result-handler.service';
 import { EventBusService } from './event-bus.service';
 import { SettlementService } from '../settlement/settlement.service';
@@ -39,6 +45,7 @@ export class MatchManagerService {
   private readonly marrakechStates = new Map<string, MarrakechGameState>();
   private readonly chessEngines = new Map<string, ChessEngine>();
   private readonly chessMoveHistories = new Map<string, ChessUciMove[]>();
+  private readonly pokerStates = new Map<string, PokerGameState>();
   private readonly matchGameTypes = new Map<string, string>();
 
   constructor(
@@ -48,6 +55,7 @@ export class MatchManagerService {
     private readonly turnController: TurnControllerService,
     private readonly marrakechTurnController: MarrakechTurnControllerService,
     private readonly chessTurnController: ChessTurnControllerService,
+    private readonly pokerTurnController: PokerTurnControllerService,
     private readonly resultHandler: ResultHandlerService,
     private readonly eventBus: EventBusService,
     private readonly settlement: SettlementService,
@@ -70,6 +78,10 @@ export class MatchManagerService {
 
     if (gameType === 'chess') {
       return this.createChessMatch(agentA, agentB, stakeAmount, potAmount);
+    }
+
+    if (gameType === 'poker') {
+      return this.createPokerMatch(agentA, agentB, stakeAmount, potAmount);
     }
 
     return this.createReversiMatch(agentA, agentB, stakeAmount, potAmount, gameType);
@@ -256,6 +268,68 @@ export class MatchManagerService {
     return matchId;
   }
 
+  private async createPokerMatch(
+    agentA: MatchAgentInput,
+    agentB: MatchAgentInput,
+    stakeAmount: number,
+    potAmount: number,
+  ): Promise<string> {
+    // Starting stack = 100 big blinds
+    const startingStack = POKER_BIG_BLIND * 100;
+    const pokerState = createPokerInitialState(startingStack, POKER_SMALL_BLIND, POKER_BIG_BLIND);
+
+    const matchDoc = await this.matchModel.create({
+      gameType: 'poker',
+      agents: {
+        a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
+        b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
+      },
+      stakeAmount, potAmount, status: 'starting',
+      currentBoard: [], currentTurn: 'a', moveCount: 0,
+      timeouts: { a: 0, b: 0 }, txHashes: { escrow: null, payout: null },
+      pokerState: { ...pokerState, deck: [] },
+    });
+
+    const matchId = matchDoc._id.toString();
+
+    const compatState: GameState = {
+      board: [] as unknown as Board, currentPlayer: 'B', moveNumber: 0,
+      scores: { black: startingStack, white: startingStack },
+      gameOver: false, winner: null,
+    };
+
+    const matchState: ActiveMatchState = {
+      matchId, gameState: compatState, clock: null, turnDeadline: 0,
+      timeouts: { a: 0, b: 0 }, status: 'starting',
+      agents: {
+        a: { agentId: agentA.agentId, endpointUrl: agentA.endpointUrl, piece: 'B', type: agentA.type, openclawUrl: agentA.openclawUrl, openclawToken: agentA.openclawToken, openclawAgentId: agentA.openclawAgentId },
+        b: { agentId: agentB.agentId, endpointUrl: agentB.endpointUrl, piece: 'W', type: agentB.type, openclawUrl: agentB.openclawUrl, openclawToken: agentB.openclawToken, openclawAgentId: agentB.openclawAgentId },
+      },
+      startedAt: Date.now(),
+    };
+
+    this.activeMatches.addMatch(matchState);
+    this.pokerStates.set(matchId, pokerState);
+    this.matchGameTypes.set(matchId, 'poker');
+
+    await Promise.all([
+      this.agentModel.updateOne({ _id: agentA.agentId }, { status: 'in_match' }),
+      this.agentModel.updateOne({ _id: agentB.agentId }, { status: 'in_match' }),
+    ]);
+
+    this.eventBus.emit('match:created', {
+      matchId,
+      agents: {
+        a: { agentId: agentA.agentId, name: agentA.name },
+        b: { agentId: agentB.agentId, name: agentB.name },
+      },
+      gameType: 'poker', stakeAmount,
+    });
+
+    this.logger.log(`Poker match ${matchId} created`);
+    return matchId;
+  }
+
   async startMatch(matchId: string): Promise<void> {
     const matchState = this.activeMatches.getMatch(matchId);
     if (!matchState) throw new Error(`Cannot start match ${matchId}: not found.`);
@@ -382,6 +456,13 @@ export class MatchManagerService {
       const chessEng = this.chessEngines.get(matchId);
       if (chessEng) startedPayload.fen = chessEng.getFen();
     }
+    if (gameType === 'poker') {
+      const pkState = this.pokerStates.get(matchId);
+      if (pkState) {
+        startedPayload.pokerPlayerStacks = { a: pkState.startingStack, b: pkState.startingStack };
+        startedPayload.pokerHandNumber = 0;
+      }
+    }
     this.eventBus.emit('match:started', startedPayload);
 
     let loopFn: Promise<void>;
@@ -389,6 +470,8 @@ export class MatchManagerService {
       loopFn = this.runMarrakechGameLoop(matchId);
     } else if (gameType === 'chess') {
       loopFn = this.runChessGameLoop(matchId);
+    } else if (gameType === 'poker') {
+      loopFn = this.runPokerGameLoop(matchId);
     } else {
       loopFn = this.runGameLoop(matchId);
     }
@@ -541,6 +624,66 @@ export class MatchManagerService {
     }
   }
 
+  private async runPokerGameLoop(matchId: string): Promise<void> {
+    while (true) {
+      const matchState = this.activeMatches.getMatch(matchId);
+      if (!matchState || matchState.status !== 'active') return;
+
+      let pokerState = this.pokerStates.get(matchId);
+      if (!pokerState) {
+        await this.endMatchWithError(matchId, 'Poker state lost');
+        return;
+      }
+
+      if (isPokerMatchOver(pokerState)) {
+        const winningSide: Side | undefined = pokerState.winner === 'a' ? 'a' : pokerState.winner === 'b' ? 'b' : undefined;
+        this.activeMatches.updateMatch(matchId, {
+          gameState: {
+            ...matchState.gameState,
+            scores: { black: pokerState.players.a.stack, white: pokerState.players.b.stack },
+            gameOver: true,
+            winner: winningSide === 'a' ? 'B' : winningSide === 'b' ? 'W' : 'draw',
+          },
+        });
+        await this.endMatch(matchId, 'score', winningSide);
+        return;
+      }
+
+      if (matchState.timeouts.a >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'b'); return; }
+      if (matchState.timeouts.b >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'a'); return; }
+
+      const handResult = await this.pokerTurnController.executeHand(matchState, pokerState);
+      this.pokerStates.set(matchId, handResult.pokerState);
+
+      this.activeMatches.updateMatch(matchId, {
+        gameState: {
+          ...matchState.gameState,
+          scores: { black: handResult.pokerState.players.a.stack, white: handResult.pokerState.players.b.stack },
+          moveNumber: handResult.pokerState.actionHistory.length,
+          gameOver: handResult.matchOver,
+          winner: handResult.matchOver
+            ? (handResult.winner === 'a' ? 'B' : handResult.winner === 'b' ? 'W' : 'draw')
+            : null,
+        },
+      });
+
+      const updated = this.activeMatches.getMatch(matchId);
+      if (!updated) return;
+
+      if (handResult.matchOver) {
+        const winningSide: Side | undefined = handResult.winner === 'a' ? 'a' : handResult.winner === 'b' ? 'b' : undefined;
+        await this.endMatch(matchId, 'score', winningSide);
+        return;
+      }
+
+      if (updated.timeouts.a >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'b'); return; }
+      if (updated.timeouts.b >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'a'); return; }
+
+      // Brief pause between hands
+      await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+
   async endMatch(matchId: string, reason: string, forcedWinnerSide?: Side): Promise<void> {
     if (this.endedMatches.has(matchId)) return;
     this.endedMatches.add(matchId);
@@ -554,6 +697,7 @@ export class MatchManagerService {
       this.marrakechStates.delete(matchId);
       this.chessEngines.delete(matchId);
       this.chessMoveHistories.delete(matchId);
+      this.pokerStates.delete(matchId);
       this.matchGameTypes.delete(matchId);
       setTimeout(() => this.endedMatches.delete(matchId), 5000);
     }
@@ -582,8 +726,14 @@ export class MatchManagerService {
       const chessEng = this.chessEngines.get(matchId);
       if (chessEng) {
         const materialScore = chessEng.getMaterialScore();
-        if (materialScore > 0) forcedWinner = 'a'; // white advantage
-        else if (materialScore < 0) forcedWinner = 'b'; // black advantage
+        if (materialScore > 0) forcedWinner = 'a';
+        else if (materialScore < 0) forcedWinner = 'b';
+      }
+    } else if (gameType === 'poker') {
+      const pkState = this.pokerStates.get(matchId);
+      if (pkState) {
+        if (pkState.players.a.stack > pkState.players.b.stack) forcedWinner = 'a';
+        else if (pkState.players.b.stack > pkState.players.a.stack) forcedWinner = 'b';
       }
     } else {
       const { scores } = matchState.gameState;
@@ -623,6 +773,7 @@ export class MatchManagerService {
     this.marrakechStates.delete(matchId);
     this.chessEngines.delete(matchId);
     this.chessMoveHistories.delete(matchId);
+    this.pokerStates.delete(matchId);
     this.matchGameTypes.delete(matchId);
     setTimeout(() => this.endedMatches.delete(matchId), 5000);
   }
@@ -689,6 +840,10 @@ export class MatchManagerService {
             const materialScore = chessEng.getMaterialScore();
             if (materialScore > 0) forcedWinner = 'a';
             else if (materialScore < 0) forcedWinner = 'b';
+          } else if (gameType === 'poker' && match.pokerState) {
+            const pkState = match.pokerState as PokerGameState;
+            if (pkState.players.a.stack > pkState.players.b.stack) forcedWinner = 'a';
+            else if (pkState.players.b.stack > pkState.players.a.stack) forcedWinner = 'b';
           } else if (scores) {
             if (scores.a > scores.b) forcedWinner = 'a';
             else if (scores.b > scores.a) forcedWinner = 'b';
@@ -761,8 +916,6 @@ export class MatchManagerService {
           };
         } else if (gameType === 'chess' && match.chessState) {
           const chessState = match.chessState as ChessState;
-          // Rebuild chess engine from initial position and replay moves
-          // This ensures threefold repetition detection works correctly
           const chessEng = this.gameEngine.createChessEngine();
           const moveHistory: ChessUciMove[] = chessState.moveHistory || [];
           for (const uci of moveHistory) {
@@ -777,6 +930,17 @@ export class MatchManagerService {
             currentPlayer: currentColor,
             moveNumber: moveHistory.length,
             scores: { black: Math.max(0, materialScore), white: Math.max(0, -materialScore) },
+            gameOver: false,
+            winner: null,
+          };
+        } else if (gameType === 'poker' && match.pokerState) {
+          const pkState = match.pokerState as PokerGameState;
+          this.pokerStates.set(matchId, pkState);
+          gameState = {
+            board: [] as unknown as Board,
+            currentPlayer: currentColor,
+            moveNumber: match.moveCount,
+            scores: { black: pkState.players.a.stack, white: pkState.players.b.stack },
             gameOver: false,
             winner: null,
           };
@@ -848,6 +1012,8 @@ export class MatchManagerService {
           loopFn = this.runMarrakechGameLoop(matchId);
         } else if (gameType === 'chess') {
           loopFn = this.runChessGameLoop(matchId);
+        } else if (gameType === 'poker') {
+          loopFn = this.runPokerGameLoop(matchId);
         } else {
           loopFn = this.runGameLoop(matchId);
         }
@@ -895,6 +1061,10 @@ export class MatchManagerService {
 
   getChessEngine(matchId: string): ChessEngine | undefined {
     return this.chessEngines.get(matchId);
+  }
+
+  getPokerState(matchId: string): PokerGameState | undefined {
+    return this.pokerStates.get(matchId);
   }
 
   getGameType(matchId: string): string {

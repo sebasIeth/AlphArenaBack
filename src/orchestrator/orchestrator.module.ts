@@ -8,6 +8,7 @@ import { MatchManagerService } from './match-manager.service';
 import { TurnControllerService } from './turn-controller.service';
 import { MarrakechTurnControllerService } from './marrakech-turn-controller.service';
 import { ChessTurnControllerService } from './chess-turn-controller.service';
+import { PokerTurnControllerService } from './poker-turn-controller.service';
 import { ResultHandlerService } from './result-handler.service';
 import { AgentClientService } from './agent-client.service';
 import { OpenClawClientService } from './openclaw-client.service';
@@ -34,6 +35,7 @@ import { HumanMoveService } from './human-move.service';
     TurnControllerService,
     MarrakechTurnControllerService,
     ChessTurnControllerService,
+    PokerTurnControllerService,
     ResultHandlerService,
     MatchManagerService,
     OrchestratorService,
