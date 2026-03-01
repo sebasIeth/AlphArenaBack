@@ -81,10 +81,9 @@ export class ResultHandlerService {
     let payoutTxHash: string | null = null;
     try {
       if (winnerId && winningSide) {
-        const potAmount = matchDoc.potAmount;
-        const platformFee = Math.floor(potAmount * (PLATFORM_FEE_PERCENT / 100));
-        const payoutAmount = potAmount - platformFee;
-        const payoutAmountUsdc = BigInt(payoutAmount) * BigInt(10 ** USDC_DECIMALS);
+        const potAmountUsdc = BigInt(matchDoc.potAmount) * BigInt(10 ** USDC_DECIMALS);
+        const platformFeeUsdc = potAmountUsdc * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
+        const payoutAmountUsdc = potAmountUsdc - platformFeeUsdc;
 
         const winnerWallet = matchState.agents[winningSide].walletAddress;
         if (!winnerWallet) {
