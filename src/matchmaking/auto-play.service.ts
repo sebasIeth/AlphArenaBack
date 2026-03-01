@@ -182,7 +182,7 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
 
     // Verify on-chain balance before queuing
     if (agent.walletAddress) {
-      const balance = await this.settlement.getAgentUsdcBalance(agent.walletAddress);
+      const balance = await this.settlement.getAgentAlphaBalance(agent.walletAddress);
       if (parseFloat(balance) < stakeAmount) {
         this.logger.warn(
           `Auto-play: agent ${agentId} has insufficient balance (${balance}) for stake ${stakeAmount}. Disabling auto-play.`,

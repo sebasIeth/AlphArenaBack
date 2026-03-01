@@ -41,7 +41,7 @@ class ChatMessageDto {
 
 class WithdrawDto {
   @IsNumber()
-  @Min(0.01, { message: 'Minimum withdrawal is 0.01 USDC' })
+  @Min(0.01, { message: 'Minimum withdrawal is 0.01 ALPHA' })
   amount: number;
 
   @IsOptional()
@@ -118,12 +118,12 @@ export class AgentsController {
     if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet');
 
-    const [usdc, eth] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(agent.walletAddress),
+    const [alpha, eth] = await Promise.all([
+      this.settlement.getAgentAlphaBalance(agent.walletAddress),
       this.settlement.getAgentEthBalance(agent.walletAddress),
     ]);
 
-    return { walletAddress: agent.walletAddress, usdc, eth };
+    return { walletAddress: agent.walletAddress, alpha, eth };
   }
 
   @Post(':id/withdraw')
@@ -140,10 +140,10 @@ export class AgentsController {
     const toAddress = dto.toAddress ?? (await this.userModel.findById(user.userId))?.walletAddress;
     if (!toAddress) throw new BadRequestException('No destination address. Provide toAddress or set a wallet on your account.');
 
-    const amountUsdc = BigInt(Math.round(dto.amount * 10 ** TOKEN_DECIMALS));
+    const amountAlpha = BigInt(Math.round(dto.amount * 10 ** TOKEN_DECIMALS));
     const privKey = decrypt(agent.walletPrivateKey);
 
-    const txHash = await this.settlement.transferUsdcFromAgent(privKey, toAddress, amountUsdc);
+    const txHash = await this.settlement.transferAlphaFromAgent(privKey, toAddress, amountAlpha);
     return { txHash, amount: dto.amount, to: toAddress };
   }
 

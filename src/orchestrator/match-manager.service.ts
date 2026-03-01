@@ -305,7 +305,7 @@ export class MatchManagerService {
     // Transfer stake from each agent wallet to platform, then escrow
     // Skip on-chain settlement for zero-stake matches
     if (matchDoc.stakeAmount > 0) {
-      const stakeAmountUsdc = BigInt(matchDoc.stakeAmount) * BigInt(10 ** TOKEN_DECIMALS);
+      const stakeAmountAlpha = BigInt(matchDoc.stakeAmount) * BigInt(10 ** TOKEN_DECIMALS);
       const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
       const platformWallet = this.settlement.getPlatformWalletAddress();
 
@@ -331,8 +331,8 @@ export class MatchManagerService {
           throw new Error('Missing agent wallet private key');
         }
 
-        await this.settlement.transferUsdcFromAgent(privKeyA, platformWallet, stakeAmountUsdc);
-        await this.settlement.transferUsdcFromAgent(privKeyB, platformWallet, stakeAmountUsdc);
+        await this.settlement.transferAlphaFromAgent(privKeyA, platformWallet, stakeAmountAlpha);
+        await this.settlement.transferAlphaFromAgent(privKeyB, platformWallet, stakeAmountAlpha);
 
         const escrowTxHash = await this.settlement.escrow(
           matchId, walletA, walletB, escrowAmount,

@@ -50,14 +50,14 @@ export class PlayService {
     }
 
     // Verify wallet balance
-    const [usdcBalance, ethBalance] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(agent.walletAddress),
+    const [alphaBalance, ethBalance] = await Promise.all([
+      this.settlement.getAgentAlphaBalance(agent.walletAddress),
       this.settlement.getAgentEthBalance(agent.walletAddress),
     ]);
 
-    if (parseFloat(usdcBalance) < stakeAmount) {
+    if (parseFloat(alphaBalance) < stakeAmount) {
       throw new BadRequestException(
-        `Insufficient USDC balance. You have ${usdcBalance} USDC but need ${stakeAmount}. Deposit USDC to ${agent.walletAddress}`,
+        `Insufficient ALPHA balance. You have ${alphaBalance} ALPHA but need ${stakeAmount}. Deposit ALPHA to ${agent.walletAddress}`,
       );
     }
 
@@ -158,14 +158,14 @@ export class PlayService {
       throw new NotFoundException('User wallet not found');
     }
 
-    const [usdc, eth] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(user.walletAddress),
+    const [alpha, eth] = await Promise.all([
+      this.settlement.getAgentAlphaBalance(user.walletAddress),
       this.settlement.getAgentEthBalance(user.walletAddress),
     ]);
 
     return {
       walletAddress: user.walletAddress,
-      usdc,
+      alpha,
       eth,
     };
   }

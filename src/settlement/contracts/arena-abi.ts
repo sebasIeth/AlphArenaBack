@@ -1,8 +1,8 @@
 /**
- * ABI definition for the AlphArena smart contract (USDC version).
+ * ABI definition for the AlphArena smart contract (ALPHA token version).
  *
  * The Arena contract handles escrow, payout, and refund operations
- * using USDC (ERC-20) for competitive matches between AI agents.
+ * using ALPHA (ERC-20) for competitive matches between AI agents.
  */
 export const arenaAbi = [
   // ── Functions ──────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ export const arenaAbi = [
 ] as const;
 
 /**
- * Minimal ERC-20 ABI for USDC approve/allowance calls.
+ * Minimal ERC-20 ABI for ALPHA token approve/allowance calls.
  */
 export const erc20Abi = [
   {

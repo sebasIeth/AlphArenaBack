@@ -81,15 +81,15 @@ export class ResultHandlerService {
     let payoutTxHash: string | null = null;
     try {
       if (winnerId && winningSide) {
-        const potAmountUsdc = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
-        const platformFeeUsdc = potAmountUsdc * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
-        const payoutAmountUsdc = potAmountUsdc - platformFeeUsdc;
+        const potAmountAlpha = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
+        const platformFeeAlpha = potAmountAlpha * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
+        const payoutAmountAlpha = potAmountAlpha - platformFeeAlpha;
 
         const winnerWallet = matchState.agents[winningSide].walletAddress;
         if (!winnerWallet) {
           this.logger.error(`No wallet address for winner (side=${winningSide}) in match ${matchId}`);
         } else {
-          payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountUsdc);
+          payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountAlpha);
         }
       } else {
         payoutTxHash = await this.settlement.refund(matchId);

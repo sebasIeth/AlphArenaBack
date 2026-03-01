@@ -41,14 +41,14 @@ export class MatchmakingController {
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet. Please recreate the agent.');
 
     // Verify agent wallet has sufficient on-chain balance
-    const [usdcBalance, ethBalance] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(agent.walletAddress),
+    const [alphaBalance, ethBalance] = await Promise.all([
+      this.settlement.getAgentAlphaBalance(agent.walletAddress),
       this.settlement.getAgentEthBalance(agent.walletAddress),
     ]);
 
-    if (parseFloat(usdcBalance) < dto.stakeAmount) {
+    if (parseFloat(alphaBalance) < dto.stakeAmount) {
       throw new BadRequestException(
-        `Insufficient USDC balance. Agent has ${usdcBalance} USDC but needs ${dto.stakeAmount}. Deposit USDC to ${agent.walletAddress}`,
+        `Insufficient ALPHA balance. Agent has ${alphaBalance} ALPHA but needs ${dto.stakeAmount}. Deposit ALPHA to ${agent.walletAddress}`,
       );
     }
 

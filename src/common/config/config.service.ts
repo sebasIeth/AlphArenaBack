@@ -38,7 +38,7 @@ export class ConfigService {
     return process.env.CONTRACT_ADDRESS;
   }
 
-  get usdcAddress(): string | undefined {
+  get alphaAddress(): string | undefined {
     return process.env.USDC_ADDRESS;
   }
 
