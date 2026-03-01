@@ -16,6 +16,9 @@ export interface MatchStartedEvent {
   players?: { id: number; name: string; dirhams: number; carpetsRemaining: number }[];
   // Chess-specific
   fen?: string;
+  // Poker-specific
+  pokerPlayerStacks?: { a: number; b: number };
+  pokerHandNumber?: number;
 }
 
 export interface MatchMoveEvent {
@@ -37,6 +40,13 @@ export interface MatchMoveEvent {
   chessMove?: string;
   fen?: string;
   isCheck?: boolean;
+  // Poker-specific
+  pokerAction?: { type: string; amount?: number };
+  pokerStreet?: string;
+  pokerPot?: number;
+  pokerCommunityCards?: { rank: string; suit: string }[];
+  pokerPlayerStacks?: { a: number; b: number };
+  pokerHandNumber?: number;
 }
 
 export interface MatchTimeoutEvent {
@@ -93,6 +103,15 @@ export interface MatchYourTurnEvent {
   moveNumber: number;
   timeRemainingMs: number;
   turnTimeoutMs: number;
+  // Poker-specific
+  pokerHoleCards?: { rank: string; suit: string }[];
+  pokerCommunityCards?: { rank: string; suit: string }[];
+  pokerPot?: number;
+  pokerPlayerStacks?: { a: number; b: number };
+  pokerStreet?: string;
+  pokerHandNumber?: number;
+  pokerIsDealer?: boolean;
+  pokerActionHistory?: { type: string; amount?: number; playerSide: string; street: string }[];
 }
 
 export interface EventBusEvents {

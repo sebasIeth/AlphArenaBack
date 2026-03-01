@@ -5,3 +5,4 @@ export * from './user.types';
 export * from './events.types';
 export * from './marrakech.types';
 export * from './chess.types';
+export * from './poker.types';

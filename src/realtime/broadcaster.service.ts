@@ -42,6 +42,9 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.assam) payload.assam = data.assam;
       if (data.players) payload.players = data.players;
       if (data.fen) payload.fen = data.fen;
+      // Poker-specific
+      if (data.pokerPlayerStacks) payload.pokerPlayerStacks = data.pokerPlayerStacks;
+      if (data.pokerHandNumber != null) payload.pokerHandNumber = data.pokerHandNumber;
       this.rooms.broadcast(data.matchId, { type: 'match:start', data: payload });
     };
 
@@ -66,6 +69,13 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.chessMove) payload.chessMove = data.chessMove;
       if (data.fen) payload.fen = data.fen;
       if (data.isCheck !== undefined) payload.isCheck = data.isCheck;
+      // Poker-specific fields
+      if (data.pokerAction) payload.pokerAction = data.pokerAction;
+      if (data.pokerStreet) payload.pokerStreet = data.pokerStreet;
+      if (data.pokerPot != null) payload.pokerPot = data.pokerPot;
+      if (data.pokerCommunityCards) payload.pokerCommunityCards = data.pokerCommunityCards;
+      if (data.pokerPlayerStacks) payload.pokerPlayerStacks = data.pokerPlayerStacks;
+      if (data.pokerHandNumber != null) payload.pokerHandNumber = data.pokerHandNumber;
       this.rooms.broadcast(data.matchId, { type: 'match:move', data: payload });
     };
 
@@ -132,20 +142,27 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
     };
 
     const onMatchYourTurn = (data: MatchYourTurnEvent): void => {
-      this.rooms.broadcast(data.matchId, {
-        type: 'match:your_turn',
-        data: {
-          matchId: data.matchId,
-          side: data.side,
-          gameType: data.gameType,
-          board: data.board,
-          legalMoves: data.legalMoves,
-          fen: data.fen,
-          moveNumber: data.moveNumber,
-          timeRemainingMs: data.timeRemainingMs,
-          turnTimeoutMs: data.turnTimeoutMs,
-        },
-      });
+      const ytPayload: Record<string, unknown> = {
+        matchId: data.matchId,
+        side: data.side,
+        gameType: data.gameType,
+        board: data.board,
+        legalMoves: data.legalMoves,
+        fen: data.fen,
+        moveNumber: data.moveNumber,
+        timeRemainingMs: data.timeRemainingMs,
+        turnTimeoutMs: data.turnTimeoutMs,
+      };
+      // Poker-specific
+      if (data.pokerHoleCards) ytPayload.pokerHoleCards = data.pokerHoleCards;
+      if (data.pokerCommunityCards) ytPayload.pokerCommunityCards = data.pokerCommunityCards;
+      if (data.pokerPot != null) ytPayload.pokerPot = data.pokerPot;
+      if (data.pokerPlayerStacks) ytPayload.pokerPlayerStacks = data.pokerPlayerStacks;
+      if (data.pokerStreet) ytPayload.pokerStreet = data.pokerStreet;
+      if (data.pokerHandNumber != null) ytPayload.pokerHandNumber = data.pokerHandNumber;
+      if (data.pokerIsDealer != null) ytPayload.pokerIsDealer = data.pokerIsDealer;
+      if (data.pokerActionHistory) ytPayload.pokerActionHistory = data.pokerActionHistory;
+      this.rooms.broadcast(data.matchId, { type: 'match:your_turn', data: ytPayload });
     };
 
     this.eventBus.on('match:started', onMatchStarted);
