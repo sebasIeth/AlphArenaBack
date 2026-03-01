@@ -7,6 +7,7 @@ import {
   MarrakechCarpetPlacement,
   ChessUciMove,
 } from '../common/types';
+import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
 import { OpenClawWsService } from '../openclaw-ws';
 import { EventBusService } from './event-bus.service';
 
@@ -57,14 +58,21 @@ export class OpenClawClientService {
   ): Promise<string> {
     const agentId = agent.openclawAgentId || 'main';
 
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`OpenClaw did not respond within ${TURN_TIMEOUT_MS}ms`)), TURN_TIMEOUT_MS);
+    });
+
     for (let attempt = 0; attempt <= OpenClawClientService.MAX_RETRIES; attempt++) {
       try {
-        return await this.openclawWs.sendAgentChat(
-          agent.openclawUrl,
-          agent.openclawToken,
-          message,
-          agentId,
-        );
+        return await Promise.race([
+          this.openclawWs.sendAgentChat(
+            agent.openclawUrl,
+            agent.openclawToken,
+            message,
+            agentId,
+          ),
+          timeoutPromise,
+        ]);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const isRateLimit = msg.includes('rate limit');
