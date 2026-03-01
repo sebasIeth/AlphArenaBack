@@ -50,7 +50,7 @@ export class AuthService {
       passwordHash,
       walletAddress: account.address,
       walletPrivateKey: privKey,
-      email: email ?? null,
+      ...(email ? { email } : {}),
       balance: 0,
     });
 
