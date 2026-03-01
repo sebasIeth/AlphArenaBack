@@ -36,7 +36,7 @@ import { HealthController } from './health.controller';
     }),
     ThrottlerModule.forRoot([{
       ttl: 60000,
-      limit: 20,
+      limit: 100,
     }]),
     ScheduleModule.forRoot(),
     MailModule,
