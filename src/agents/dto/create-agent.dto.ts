@@ -31,6 +31,6 @@ export class CreateAgentDto {
   selfclawPublicKey?: string;
   @IsOptional()
   @IsArray()
-  @IsIn(['chess'], { each: true })
+  @IsIn(['chess', 'poker'], { each: true })
   gameTypes?: string[];
 }
