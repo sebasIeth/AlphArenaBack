@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, HttpCode, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { IsString, MinLength, IsUrl, IsOptional, IsNumber, Min } from 'class-validator';
+import { IsString, MinLength, IsUrl, IsOptional, IsNumber, Min, Matches } from 'class-validator';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AgentsService } from './agents.service';
@@ -43,6 +43,11 @@ class WithdrawDto {
   @IsNumber()
   @Min(0.01, { message: 'Minimum withdrawal is 0.01 USDC' })
   amount: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{40}$/, { message: 'Invalid Ethereum address' })
+  toAddress?: string;
 }
 
 @Controller('agents')
@@ -132,14 +137,14 @@ export class AgentsController {
     if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (!agent.walletAddress || !agent.walletPrivateKey) throw new BadRequestException('Agent does not have a wallet');
 
-    const userDoc = await this.userModel.findById(user.userId);
-    if (!userDoc?.walletAddress) throw new BadRequestException('User does not have a wallet address');
+    const toAddress = dto.toAddress ?? (await this.userModel.findById(user.userId))?.walletAddress;
+    if (!toAddress) throw new BadRequestException('No destination address. Provide toAddress or set a wallet on your account.');
 
     const amountUsdc = BigInt(Math.round(dto.amount * 10 ** TOKEN_DECIMALS));
     const privKey = decrypt(agent.walletPrivateKey);
 
-    const txHash = await this.settlement.transferUsdcFromAgent(privKey, userDoc.walletAddress, amountUsdc);
-    return { txHash, amount: dto.amount, to: userDoc.walletAddress };
+    const txHash = await this.settlement.transferUsdcFromAgent(privKey, toAddress, amountUsdc);
+    return { txHash, amount: dto.amount, to: toAddress };
   }
 
   @Delete(':id')
