@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Side, PlayerColor, Board } from '../common/types';
 import { ChessMoveRequest, ChessUciMove } from '../common/types/chess.types';
 import { MoveDoc, Match } from '../database/schemas';
+import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
 import { ChessEngine } from '../game-engine/chess';
 import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
@@ -92,9 +93,10 @@ export class ChessTurnControllerService {
           fen: chessEngine.getFen(),
           moveNumber: chessEngine.getMoveNumber(),
           timeRemainingMs,
+          turnTimeoutMs: TURN_TIMEOUT_MS,
         });
 
-        const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId, timeRemainingMs > 0 ? timeRemainingMs : undefined);
+        const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId);
         response = { move: humanMove as ChessUciMove };
       } else if (agent.type === 'openclaw') {
         response = await this.agentClient.requestChessMoveFromOpenClaw(agent, moveRequest, { side: currentSide, agentId: agent.agentId });

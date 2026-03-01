@@ -10,6 +10,7 @@ import {
   Piece,
   MarrakechCarpetPlacement,
 } from '../common/types';
+import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
 import { MoveDoc } from '../database/schemas';
 import { Match } from '../database/schemas';
 import { GameEngineService } from '../game-engine/game-engine.service';
@@ -191,6 +192,7 @@ export class MarrakechTurnControllerService {
               : (validActions as any).borderOptions,
           moveNumber: state.turnNumber,
           timeRemainingMs: matchState.clock ? matchState.clock.getTimeRemainingMs() : 30_000,
+          turnTimeoutMs: TURN_TIMEOUT_MS,
         });
 
         const humanMove = await this.humanMoveService.waitForMove(matchId, side, agent.agentId);

@@ -92,6 +92,7 @@ export interface MatchYourTurnEvent {
   fen?: string;
   moveNumber: number;
   timeRemainingMs: number;
+  turnTimeoutMs: number;
 }
 
 export interface EventBusEvents {

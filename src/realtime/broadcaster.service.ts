@@ -143,6 +143,7 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
           fen: data.fen,
           moveNumber: data.moveNumber,
           timeRemainingMs: data.timeRemainingMs,
+          turnTimeoutMs: data.turnTimeoutMs,
         },
       });
     };
