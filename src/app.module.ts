@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_GUARD } from '@nestjs/core';
+
 import { ConfigModule } from './common/config/config.module';
 import { ConfigService } from './common/config/config.service';
 import { AuthModule } from './auth/auth.module';
@@ -34,11 +34,7 @@ import { HealthController } from './health.controller';
         socketTimeoutMS: 45000,
       }),
     }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
-    ScheduleModule.forRoot(),
+ScheduleModule.forRoot(),
     MailModule,
     OpenClawWsModule,
     AuthModule,
@@ -54,11 +50,6 @@ import { HealthController } from './health.controller';
     GameEngineModule,
   ],
   controllers: [HealthController],
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
-  ],
+  providers: [],
 })
 export class AppModule {}
