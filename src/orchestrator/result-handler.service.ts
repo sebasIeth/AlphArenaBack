@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { PLATFORM_FEE_PERCENT, USDC_DECIMALS } from '../common/constants/game.constants';
+import { PLATFORM_FEE_PERCENT, TOKEN_DECIMALS } from '../common/constants/game.constants';
 import { MatchResultReason, Side } from '../common/types';
 import { Match, Agent } from '../database/schemas';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
@@ -81,7 +81,7 @@ export class ResultHandlerService {
     let payoutTxHash: string | null = null;
     try {
       if (winnerId && winningSide) {
-        const potAmountUsdc = BigInt(matchDoc.potAmount) * BigInt(10 ** USDC_DECIMALS);
+        const potAmountUsdc = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
         const platformFeeUsdc = potAmountUsdc * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
         const payoutAmountUsdc = potAmountUsdc - platformFeeUsdc;
 

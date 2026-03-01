@@ -11,7 +11,7 @@ import { AuthPayload } from '../common/types';
 import { SettlementService } from '../settlement/settlement.service';
 import { Agent, User } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
-import { USDC_DECIMALS } from '../common/constants/game.constants';
+import { TOKEN_DECIMALS } from '../common/constants/game.constants';
 
 class TestConnectionDto {
   @IsString()
@@ -135,7 +135,7 @@ export class AgentsController {
     const userDoc = await this.userModel.findById(user.userId);
     if (!userDoc?.walletAddress) throw new BadRequestException('User does not have a wallet address');
 
-    const amountUsdc = BigInt(Math.round(dto.amount * 10 ** USDC_DECIMALS));
+    const amountUsdc = BigInt(Math.round(dto.amount * 10 ** TOKEN_DECIMALS));
     const privKey = decrypt(agent.walletPrivateKey);
 
     const txHash = await this.settlement.transferUsdcFromAgent(privKey, userDoc.walletAddress, amountUsdc);

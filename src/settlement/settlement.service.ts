@@ -393,7 +393,7 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
       args: [walletAddress as Address],
     });
 
-    return formatUnits(balance as bigint, 6);
+    return formatUnits(balance as bigint, 18);
   }
 
   /**

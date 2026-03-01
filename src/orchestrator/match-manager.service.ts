@@ -5,7 +5,7 @@ import {
   GameState, Side, Board, Piece, PlayerColor,
   MarrakechGameState, ChessState, ChessUciMove,
 } from '../common/types';
-import { MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, USDC_DECIMALS } from '../common/constants/game.constants';
+import { MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, TOKEN_DECIMALS } from '../common/constants/game.constants';
 import { Match, Agent } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
 import { GameEngineService } from '../game-engine/game-engine.service';
@@ -305,8 +305,8 @@ export class MatchManagerService {
     // Transfer stake from each agent wallet to platform, then escrow
     // Skip on-chain settlement for zero-stake matches
     if (matchDoc.stakeAmount > 0) {
-      const stakeAmountUsdc = BigInt(matchDoc.stakeAmount) * BigInt(10 ** USDC_DECIMALS);
-      const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** USDC_DECIMALS);
+      const stakeAmountUsdc = BigInt(matchDoc.stakeAmount) * BigInt(10 ** TOKEN_DECIMALS);
+      const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
       const platformWallet = this.settlement.getPlatformWalletAddress();
 
       if (!platformWallet) {
