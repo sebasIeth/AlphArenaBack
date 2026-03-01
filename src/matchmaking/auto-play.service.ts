@@ -7,8 +7,10 @@ import { MatchmakingService } from './matchmaking.service';
 import {
   AUTO_PLAY_REQUEUE_DELAY_MS,
   AUTO_PLAY_MAX_CONSECUTIVE_ERRORS,
+  MIN_STAKE,
 } from '../common/constants/game.constants';
 import { MatchEndedEvent, MatchErrorEvent } from '../common/types/events.types';
+import { SettlementService } from '../settlement/settlement.service';
 
 @Injectable()
 export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
@@ -19,6 +21,7 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     private readonly eventBus: EventBusService,
     private readonly matchmakingService: MatchmakingService,
+    private readonly settlement: SettlementService,
   ) {}
 
   onModuleInit() {
@@ -175,7 +178,19 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const stakeAmount = agent.autoPlayStakeAmount ?? 0;
+    const stakeAmount = MIN_STAKE;
+
+    // Verify on-chain balance before queuing
+    if (agent.walletAddress) {
+      const balance = await this.settlement.getAgentUsdcBalance(agent.walletAddress);
+      if (parseFloat(balance) < stakeAmount) {
+        this.logger.warn(
+          `Auto-play: agent ${agentId} has insufficient balance (${balance}) for stake ${stakeAmount}. Disabling auto-play.`,
+        );
+        await this.agentModel.updateOne({ _id: agentId }, { $set: { autoPlay: false } });
+        return;
+      }
+    }
 
     try {
       agent.status = 'queued';
