@@ -36,7 +36,7 @@ export class AgentsService {
       userId,
       name: dto.name,
       type: agentType,
-      gameTypes: dto.gameTypes,
+      gameTypes: dto.gameTypes || ['chess'],
       eloRating: DEFAULT_ELO,
       status: 'idle',
       stats: { wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0 },
@@ -77,7 +77,7 @@ export class AgentsService {
   }
 
   async findAllByUser(userId: string) {
-    const agents = await this.agentModel.find({ userId, status: { $ne: 'disabled' } }).sort({ createdAt: -1 });
+    const agents = await this.agentModel.find({ userId, status: { $ne: 'disabled' }, type: { $ne: 'human' } }).sort({ createdAt: -1 });
     return { agents };
   }
 
