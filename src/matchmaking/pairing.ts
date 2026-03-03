@@ -3,6 +3,9 @@ import { QueueEntryData } from './matchmaking.queue';
 
 const STAKE_TOLERANCE = 0.2;
 
+/** ELO range expands by this amount per second of waiting */
+const ELO_RANGE_EXPANSION_PER_SEC = 10;
+
 function stakesCompatible(stakeA: number, stakeB: number): boolean {
   const larger = Math.max(stakeA, stakeB);
   const smaller = Math.min(stakeA, stakeB);
@@ -14,6 +17,7 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
   const sorted = [...waitingEntries].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
   const paired = new Set<string>();
   const pairs: Array<[QueueEntryData, QueueEntryData]> = [];
+  const now = Date.now();
 
   for (let i = 0; i < sorted.length; i++) {
     const entryA = sorted[i];
@@ -28,7 +32,13 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
         const hasHuman = entryA.agentType === 'human' || entryB.agentType === 'human';
         if (!hasHuman) continue;
       }
-      if (Math.abs(entryA.eloRating - entryB.eloRating) > ELO_MATCH_RANGE) continue;
+
+      // ELO range expands the longer the oldest entry has waited
+      const waitMs = now - entryA.joinedAt.getTime();
+      const waitSec = waitMs / 1_000;
+      const effectiveRange = ELO_MATCH_RANGE + waitSec * ELO_RANGE_EXPANSION_PER_SEC;
+      if (Math.abs(entryA.eloRating - entryB.eloRating) > effectiveRange) continue;
+
       if (!stakesCompatible(entryA.stakeAmount, entryB.stakeAmount)) continue;
 
       pairs.push([entryA, entryB]);

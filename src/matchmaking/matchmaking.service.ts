@@ -82,6 +82,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     const entry: QueueEntryData = { agentId, userId, eloRating, stakeAmount, gameType, status: 'waiting', joinedAt: new Date(), agentType };
     await this.queue.add(entry);
     this.logger.log(`Agent ${agentId} joined matchmaking queue`);
+    this.eventBus.emit('matchmaking:queue_joined', { agentId, gameType, agentType });
   }
 
   async leaveQueue(agentId: string): Promise<void> {

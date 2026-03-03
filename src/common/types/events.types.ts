@@ -114,6 +114,12 @@ export interface MatchYourTurnEvent {
   pokerActionHistory?: { type: string; amount?: number; playerSide: string; street: string }[];
 }
 
+export interface MatchmakingQueueJoinedEvent {
+  agentId: string;
+  gameType: string;
+  agentType?: string;
+}
+
 export interface EventBusEvents {
   'match:created': MatchCreatedEvent;
   'match:started': MatchStartedEvent;
@@ -124,6 +130,7 @@ export interface EventBusEvents {
   'agent:thinking': AgentThinkingEvent;
   'matchmaking:countdown': MatchmakingCountdownEvent;
   'matchmaking:matched': MatchmakingMatchedEvent;
+  'matchmaking:queue_joined': MatchmakingQueueJoinedEvent;
   'match:your_turn': MatchYourTurnEvent;
 }
 

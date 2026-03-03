@@ -33,6 +33,7 @@ export class MatchmakingQueue {
       gameType: doc.gameType,
       status: doc.status as QueueEntryStatus,
       joinedAt: doc.joinedAt,
+      agentType: doc.agentType,
     }));
     this.logger.log(`Loaded ${this.entries.length} queue entries from database`);
   }
@@ -49,6 +50,7 @@ export class MatchmakingQueue {
       gameType: entry.gameType,
       status: entry.status,
       joinedAt: entry.joinedAt,
+      agentType: entry.agentType,
     });
 
     this.entries.push(entry);

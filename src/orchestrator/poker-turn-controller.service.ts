@@ -160,8 +160,9 @@ export class PokerTurnControllerService {
 
         state = applyAction(state, pokerAction);
 
-        // Emit match:move event
-        const moveNumber = state.actionHistory.length;
+        // Emit match:move event — use global move counter across all hands
+        const existingMoveCount = await this.moveModel.countDocuments({ matchId });
+        const moveNumber = existingMoveCount + 1;
         this.eventBus.emit('match:move', {
           matchId,
           side: currentSide,
