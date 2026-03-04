@@ -8,6 +8,7 @@ import {
   MatchmakingCountdownEvent,
   MatchmakingMatchedEvent,
   MatchYourTurnEvent,
+  PokerLobbyUpdateEvent,
 } from '../common/types';
 import { EventBusService } from '../orchestrator/event-bus.service';
 import { RoomsService } from './rooms.service';
@@ -42,9 +43,11 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.assam) payload.assam = data.assam;
       if (data.players) payload.players = data.players;
       if (data.fen) payload.fen = data.fen;
-      // Poker-specific
+      // Poker-specific (legacy 2-player)
       if (data.pokerPlayerStacks) payload.pokerPlayerStacks = data.pokerPlayerStacks;
       if (data.pokerHandNumber != null) payload.pokerHandNumber = data.pokerHandNumber;
+      // Poker N-player
+      if (data.pokerPlayers) payload.pokerPlayers = data.pokerPlayers;
       this.rooms.broadcast(data.matchId, { type: 'match:start', data: payload });
     };
 
@@ -69,13 +72,16 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.chessMove) payload.chessMove = data.chessMove;
       if (data.fen) payload.fen = data.fen;
       if (data.isCheck !== undefined) payload.isCheck = data.isCheck;
-      // Poker-specific fields
+      // Poker-specific fields (legacy 2-player)
       if (data.pokerAction) payload.pokerAction = data.pokerAction;
       if (data.pokerStreet) payload.pokerStreet = data.pokerStreet;
       if (data.pokerPot != null) payload.pokerPot = data.pokerPot;
       if (data.pokerCommunityCards) payload.pokerCommunityCards = data.pokerCommunityCards;
       if (data.pokerPlayerStacks) payload.pokerPlayerStacks = data.pokerPlayerStacks;
       if (data.pokerHandNumber != null) payload.pokerHandNumber = data.pokerHandNumber;
+      // Poker N-player fields
+      if (data.pokerPlayers) payload.pokerPlayers = data.pokerPlayers;
+      if (data.pokerPlayerIndex != null) payload.pokerPlayerIndex = data.pokerPlayerIndex;
       this.rooms.broadcast(data.matchId, { type: 'match:move', data: payload });
     };
 
@@ -86,23 +92,26 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
           matchId: data.matchId,
           side: data.side,
           timeoutCount: data.timeoutCount,
+          seatIndex: data.seatIndex,
         },
       });
     };
 
     const onMatchEnded = (data: MatchEndedEvent): void => {
-      this.rooms.broadcast(data.matchId, {
-        type: 'match:end',
-        data: {
-          matchId: data.matchId,
-          result: {
-            winnerId: data.result.winnerId,
-            reason: data.result.reason,
-            finalScore: { a: data.result.finalScore.a, b: data.result.finalScore.b },
-            totalMoves: data.result.totalMoves,
-          },
+      const payload: Record<string, unknown> = {
+        matchId: data.matchId,
+        result: {
+          winnerId: data.result.winnerId,
+          reason: data.result.reason,
+          finalScore: { a: data.result.finalScore.a, b: data.result.finalScore.b },
+          totalMoves: data.result.totalMoves,
         },
-      });
+      };
+      if (data.pokerPlayerIds) payload.pokerPlayerIds = data.pokerPlayerIds;
+      if (data.result.pokerFinalScores) {
+        (payload.result as any).pokerFinalScores = data.result.pokerFinalScores;
+      }
+      this.rooms.broadcast(data.matchId, { type: 'match:end', data: payload });
       this.rooms.cleanup(data.matchId);
     };
 
@@ -153,7 +162,7 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
         timeRemainingMs: data.timeRemainingMs,
         turnTimeoutMs: data.turnTimeoutMs,
       };
-      // Poker-specific
+      // Poker-specific (legacy 2-player)
       if (data.pokerHoleCards) ytPayload.pokerHoleCards = data.pokerHoleCards;
       if (data.pokerCommunityCards) ytPayload.pokerCommunityCards = data.pokerCommunityCards;
       if (data.pokerPot != null) ytPayload.pokerPot = data.pokerPot;
@@ -162,7 +171,24 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.pokerHandNumber != null) ytPayload.pokerHandNumber = data.pokerHandNumber;
       if (data.pokerIsDealer != null) ytPayload.pokerIsDealer = data.pokerIsDealer;
       if (data.pokerActionHistory) ytPayload.pokerActionHistory = data.pokerActionHistory;
+      // Poker N-player
+      if (data.pokerPlayers) ytPayload.pokerPlayers = data.pokerPlayers;
+      if (data.pokerSeatIndex != null) ytPayload.pokerSeatIndex = data.pokerSeatIndex;
       this.rooms.broadcast(data.matchId, { type: 'match:your_turn', data: ytPayload });
+    };
+
+    const onPokerLobbyUpdate = (data: PokerLobbyUpdateEvent): void => {
+      this.rooms.broadcastAll({
+        type: 'poker:lobby_update',
+        data: {
+          gameType: data.gameType,
+          players: data.players,
+          countdownMs: data.countdownMs,
+          playerCount: data.playerCount,
+          minPlayers: data.minPlayers,
+          maxPlayers: data.maxPlayers,
+        },
+      });
     };
 
     this.eventBus.on('match:started', onMatchStarted);
@@ -173,6 +199,7 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
     this.eventBus.on('matchmaking:countdown', onMatchmakingCountdown);
     this.eventBus.on('matchmaking:matched', onMatchmakingMatched);
     this.eventBus.on('match:your_turn', onMatchYourTurn);
+    this.eventBus.on('poker:lobby_update', onPokerLobbyUpdate);
 
     this.handlers.set('match:started', onMatchStarted as (...args: unknown[]) => void);
     this.handlers.set('match:move', onMatchMove as (...args: unknown[]) => void);
@@ -182,6 +209,7 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
     this.handlers.set('matchmaking:countdown', onMatchmakingCountdown as (...args: unknown[]) => void);
     this.handlers.set('matchmaking:matched', onMatchmakingMatched as (...args: unknown[]) => void);
     this.handlers.set('match:your_turn', onMatchYourTurn as (...args: unknown[]) => void);
+    this.handlers.set('poker:lobby_update', onPokerLobbyUpdate as (...args: unknown[]) => void);
 
     this.logger.log('Broadcaster started');
   }

@@ -276,7 +276,9 @@ export class MatchManagerService {
   ): Promise<string> {
     // Starting stack = 100 big blinds
     const startingStack = POKER_BIG_BLIND * 100;
-    const pokerState = createPokerInitialState(startingStack, POKER_SMALL_BLIND, POKER_BIG_BLIND);
+    const pokerState = createPokerInitialState(2, startingStack, POKER_SMALL_BLIND, POKER_BIG_BLIND);
+    pokerState.players[0].playerId = agentA.agentId;
+    pokerState.players[1].playerId = agentB.agentId;
 
     const matchDoc = await this.matchModel.create({
       gameType: 'poker',
@@ -330,6 +332,96 @@ export class MatchManagerService {
     return matchId;
   }
 
+  async createPokerMultiplayerMatch(
+    players: MatchAgentInput[],
+    stakeAmount: number,
+  ): Promise<string> {
+    const potAmount = stakeAmount * players.length;
+    const startingStack = POKER_BIG_BLIND * 100;
+    const pokerState = createPokerInitialState(players.length, startingStack, POKER_SMALL_BLIND, POKER_BIG_BLIND);
+
+    // Assign player IDs to seats
+    for (let i = 0; i < players.length; i++) {
+      pokerState.players[i].playerId = players[i].agentId;
+    }
+
+    // Build pokerPlayers array for DB
+    const pokerPlayers = players.map((p, i) => ({
+      seatIndex: i,
+      agentId: p.agentId,
+      userId: p.userId,
+      name: p.name,
+      eloAtStart: p.eloRating,
+    }));
+
+    // Use first two players for agents.a/b compatibility (required field)
+    const matchDoc = await this.matchModel.create({
+      gameType: 'poker',
+      agents: {
+        a: { agentId: players[0].agentId, userId: players[0].userId, name: players[0].name, eloAtStart: players[0].eloRating },
+        b: { agentId: players[1].agentId, userId: players[1].userId, name: players[1].name, eloAtStart: players[1].eloRating },
+      },
+      pokerPlayers,
+      stakeAmount, potAmount, status: 'starting',
+      currentBoard: [], currentTurn: 'a', moveCount: 0,
+      timeouts: { a: 0, b: 0 }, txHashes: { escrow: null, payout: null },
+      pokerState: { ...pokerState, deck: [] },
+    });
+
+    const matchId = matchDoc._id.toString();
+
+    const compatState: GameState = {
+      board: [] as unknown as Board, currentPlayer: 'B', moveNumber: 0,
+      scores: { black: startingStack, white: startingStack },
+      gameOver: false, winner: null,
+    };
+
+    const pokerAgents = players.map((p, i) => ({
+      seatIndex: i,
+      agentId: p.agentId,
+      endpointUrl: p.endpointUrl,
+      type: p.type,
+      openclawUrl: p.openclawUrl,
+      openclawToken: p.openclawToken,
+      openclawAgentId: p.openclawAgentId,
+    }));
+
+    const matchState: ActiveMatchState = {
+      matchId, gameState: compatState, clock: null, turnDeadline: 0,
+      timeouts: { a: 0, b: 0 },
+      pokerTimeouts: Object.fromEntries(players.map((_, i) => [i, 0])),
+      status: 'starting',
+      agents: {
+        a: { agentId: players[0].agentId, endpointUrl: players[0].endpointUrl, piece: 'B', type: players[0].type, openclawUrl: players[0].openclawUrl, openclawToken: players[0].openclawToken, openclawAgentId: players[0].openclawAgentId },
+        b: { agentId: players[1].agentId, endpointUrl: players[1].endpointUrl, piece: 'W', type: players[1].type, openclawUrl: players[1].openclawUrl, openclawToken: players[1].openclawToken, openclawAgentId: players[1].openclawAgentId },
+      },
+      pokerAgents,
+      startedAt: Date.now(),
+    };
+
+    this.activeMatches.addMatch(matchState);
+    this.pokerStates.set(matchId, pokerState);
+    this.matchGameTypes.set(matchId, 'poker');
+
+    // Set all players to in_match
+    await Promise.all(
+      players.map(p => this.agentModel.updateOne({ _id: p.agentId }, { status: 'in_match' })),
+    );
+
+    this.eventBus.emit('match:created', {
+      matchId,
+      agents: {
+        a: { agentId: players[0].agentId, name: players[0].name },
+        b: { agentId: players[1].agentId, name: players[1].name },
+      },
+      pokerPlayers: pokerPlayers.map(p => ({ agentId: p.agentId, name: p.name, seatIndex: p.seatIndex })),
+      gameType: 'poker', stakeAmount,
+    });
+
+    this.logger.log(`Poker multiplayer match ${matchId} created with ${players.length} players`);
+    return matchId;
+  }
+
   async startMatch(matchId: string): Promise<void> {
     const matchState = this.activeMatches.getMatch(matchId);
     if (!matchState) throw new Error(`Cannot start match ${matchId}: not found.`);
@@ -346,38 +438,48 @@ export class MatchManagerService {
       throw new Error(`Match document ${matchId} not found in DB.`);
     }
 
-    // Resolve wallet addresses from agent docs (agent-owned wallets)
-    const [agentDocA, agentDocB] = await Promise.all([
-      this.agentModel.findById(matchState.agents.a.agentId).select('+walletPrivateKey'),
-      this.agentModel.findById(matchState.agents.b.agentId).select('+walletPrivateKey'),
-    ]);
-    const walletA = agentDocA?.walletAddress;
-    const walletB = agentDocB?.walletAddress;
+    // Determine all agent IDs involved in this match
+    const isPokerMultiplayer = !!(matchState.pokerAgents && matchState.pokerAgents.length > 0);
+    const allAgentIds = isPokerMultiplayer
+      ? matchState.pokerAgents!.map(a => a.agentId)
+      : [matchState.agents.a.agentId, matchState.agents.b.agentId];
 
-    if (!walletA || !walletB) {
-      this.logger.error(`Missing agent wallet for match ${matchId}: A=${walletA}, B=${walletB}`);
+    // Resolve wallet addresses from agent docs
+    const agentDocs = await Promise.all(
+      allAgentIds.map(id => this.agentModel.findById(id).select('+walletPrivateKey')),
+    );
+
+    const missingWallet = agentDocs.some(d => !d?.walletAddress);
+    if (missingWallet) {
+      this.logger.error(`Missing agent wallet for match ${matchId}`);
       await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
-      await Promise.all([
-        this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
-        this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
-      ]);
-      this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: 'Missing wallet address for agent' });
+      await Promise.all(allAgentIds.map(id => this.agentModel.updateOne({ _id: id }, { status: 'idle' })));
+      const errorPayload: any = { matchId, error: 'Missing wallet address for agent' };
+      if (isPokerMultiplayer) errorPayload.pokerPlayerIds = allAgentIds;
+      else errorPayload.agentIds = { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId };
+      this.eventBus.emit('match:error', errorPayload);
       this.activeMatches.removeMatch(matchId);
-      this.marrakechStates.delete(matchId);
       this.matchGameTypes.delete(matchId);
       return;
     }
 
-    // Store agent wallet addresses in active match state for settlement
-    this.activeMatches.updateMatch(matchId, {
-      agents: {
-        a: { ...matchState.agents.a, walletAddress: walletA },
-        b: { ...matchState.agents.b, walletAddress: walletB },
-      },
-    });
+    // Store wallet addresses in active match state
+    if (isPokerMultiplayer) {
+      const updatedPokerAgents = matchState.pokerAgents!.map((a, i) => ({
+        ...a,
+        walletAddress: agentDocs[i]!.walletAddress,
+      }));
+      this.activeMatches.updateMatch(matchId, { pokerAgents: updatedPokerAgents });
+    } else {
+      this.activeMatches.updateMatch(matchId, {
+        agents: {
+          a: { ...matchState.agents.a, walletAddress: agentDocs[0]!.walletAddress },
+          b: { ...matchState.agents.b, walletAddress: agentDocs[1]!.walletAddress },
+        },
+      });
+    }
 
-    // Transfer stake from each agent wallet to platform, then escrow
-    // Skip on-chain settlement for zero-stake matches
+    // Transfer stakes and escrow
     if (matchDoc.stakeAmount > 0) {
       const stakeAmountAlpha = BigInt(matchDoc.stakeAmount) * BigInt(10 ** TOKEN_DECIMALS);
       const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
@@ -386,43 +488,39 @@ export class MatchManagerService {
       if (!platformWallet) {
         this.logger.error(`Platform wallet not available for match ${matchId}`);
         await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
-        await Promise.all([
-          this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
-          this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
-        ]);
-        this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: 'Platform wallet not configured' });
+        await Promise.all(allAgentIds.map(id => this.agentModel.updateOne({ _id: id }, { status: 'idle' })));
+        const errorPayload: any = { matchId, error: 'Platform wallet not configured' };
+        if (isPokerMultiplayer) errorPayload.pokerPlayerIds = allAgentIds;
+        else errorPayload.agentIds = { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId };
+        this.eventBus.emit('match:error', errorPayload);
         this.activeMatches.removeMatch(matchId);
-        this.marrakechStates.delete(matchId);
         this.matchGameTypes.delete(matchId);
         return;
       }
 
       try {
-        const privKeyA = agentDocA.walletPrivateKey ? decrypt(agentDocA.walletPrivateKey) : null;
-        const privKeyB = agentDocB.walletPrivateKey ? decrypt(agentDocB.walletPrivateKey) : null;
-
-        if (!privKeyA || !privKeyB) {
-          throw new Error('Missing agent wallet private key');
+        // Transfer from each player
+        for (const doc of agentDocs) {
+          const privKey = doc!.walletPrivateKey ? decrypt(doc!.walletPrivateKey) : null;
+          if (!privKey) throw new Error(`Missing wallet private key for agent ${doc!._id}`);
+          await this.settlement.transferAlphaFromAgent(privKey, platformWallet, stakeAmountAlpha);
         }
 
-        await this.settlement.transferAlphaFromAgent(privKeyA, platformWallet, stakeAmountAlpha);
-        await this.settlement.transferAlphaFromAgent(privKeyB, platformWallet, stakeAmountAlpha);
-
+        // Escrow (use first two wallets for compatibility with 2-player escrow API)
         const escrowTxHash = await this.settlement.escrow(
-          matchId, walletA, walletB, escrowAmount,
+          matchId, agentDocs[0]!.walletAddress, agentDocs[1]!.walletAddress, escrowAmount,
         );
         await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': escrowTxHash });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`Escrow failed for match ${matchId}: ${message}`);
         await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
-        await Promise.all([
-          this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
-          this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
-        ]);
-        this.eventBus.emit('match:error', { matchId, agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }, error: `Escrow failed: ${message}` });
+        await Promise.all(allAgentIds.map(id => this.agentModel.updateOne({ _id: id }, { status: 'idle' })));
+        const errorPayload: any = { matchId, error: `Escrow failed: ${message}` };
+        if (isPokerMultiplayer) errorPayload.pokerPlayerIds = allAgentIds;
+        else errorPayload.agentIds = { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId };
+        this.eventBus.emit('match:error', errorPayload);
         this.activeMatches.removeMatch(matchId);
-        this.marrakechStates.delete(matchId);
         this.matchGameTypes.delete(matchId);
         return;
       }
@@ -458,8 +556,19 @@ export class MatchManagerService {
     }
     if (gameType === 'poker') {
       const pkState = this.pokerStates.get(matchId);
+      const updatedMatchState = this.activeMatches.getMatch(matchId);
       if (pkState) {
-        startedPayload.pokerPlayerStacks = { a: pkState.startingStack, b: pkState.startingStack };
+        if (updatedMatchState?.pokerAgents && updatedMatchState.pokerAgents.length > 0) {
+          // N-player poker
+          startedPayload.pokerPlayers = pkState.players.map(p => ({
+            seatIndex: p.seatIndex,
+            playerId: p.playerId,
+            stack: p.stack,
+          }));
+        } else {
+          // Legacy 2-player
+          startedPayload.pokerPlayerStacks = { a: pkState.startingStack, b: pkState.startingStack };
+        }
         startedPayload.pokerHandNumber = 0;
       }
     }
@@ -636,11 +745,18 @@ export class MatchManagerService {
       }
 
       if (isPokerMatchOver(pokerState)) {
-        const winningSide: Side | undefined = pokerState.winner === 'a' ? 'a' : pokerState.winner === 'b' ? 'b' : undefined;
+        // Find the winner — last player with chips
+        const playersWithChips = pokerState.players.filter(p => !p.isEliminated && p.stack > 0);
+        let winningSide: Side | undefined;
+        if (playersWithChips.length === 1) {
+          // Map seat 0 -> 'a', seat 1 -> 'b' for compat (only matters for 2-player)
+          winningSide = playersWithChips[0].seatIndex === 0 ? 'a' : 'b';
+        }
+
         this.activeMatches.updateMatch(matchId, {
           gameState: {
             ...matchState.gameState,
-            scores: { black: pokerState.players.a.stack, white: pokerState.players.b.stack },
+            scores: { black: pokerState.players[0]?.stack ?? 0, white: pokerState.players[1]?.stack ?? 0 },
             gameOver: true,
             winner: winningSide === 'a' ? 'B' : winningSide === 'b' ? 'W' : 'draw',
           },
@@ -649,8 +765,21 @@ export class MatchManagerService {
         return;
       }
 
-      if (matchState.timeouts.a >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'b'); return; }
-      if (matchState.timeouts.b >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'a'); return; }
+      // Check timeouts (N-player: any player with too many timeouts gets eliminated)
+      if (matchState.pokerTimeouts) {
+        for (const [seatStr, count] of Object.entries(matchState.pokerTimeouts)) {
+          if (count >= MAX_TIMEOUTS) {
+            const seatIdx = parseInt(seatStr, 10);
+            const player = pokerState.players[seatIdx];
+            if (player && !player.isEliminated) {
+              player.isEliminated = true;
+              player.hasFolded = true;
+              this.logger.warn(`Player at seat ${seatIdx} eliminated due to ${count} timeouts in match ${matchId}`);
+            }
+          }
+        }
+        this.pokerStates.set(matchId, pokerState);
+      }
 
       const handResult = await this.pokerTurnController.executeHand(matchState, pokerState);
       this.pokerStates.set(matchId, handResult.pokerState);
@@ -658,12 +787,10 @@ export class MatchManagerService {
       this.activeMatches.updateMatch(matchId, {
         gameState: {
           ...matchState.gameState,
-          scores: { black: handResult.pokerState.players.a.stack, white: handResult.pokerState.players.b.stack },
+          scores: { black: handResult.pokerState.players[0]?.stack ?? 0, white: handResult.pokerState.players[1]?.stack ?? 0 },
           moveNumber: handResult.pokerState.actionHistory.length,
           gameOver: handResult.matchOver,
-          winner: handResult.matchOver
-            ? (handResult.winner === 'a' ? 'B' : handResult.winner === 'b' ? 'W' : 'draw')
-            : null,
+          winner: handResult.matchOver ? 'B' : null, // generic for compat
         },
       });
 
@@ -671,13 +798,14 @@ export class MatchManagerService {
       if (!updated) return;
 
       if (handResult.matchOver) {
-        const winningSide: Side | undefined = handResult.winner === 'a' ? 'a' : handResult.winner === 'b' ? 'b' : undefined;
+        const playersWithChips = handResult.pokerState.players.filter(p => !p.isEliminated && p.stack > 0);
+        let winningSide: Side | undefined;
+        if (playersWithChips.length === 1) {
+          winningSide = playersWithChips[0].seatIndex === 0 ? 'a' : 'b';
+        }
         await this.endMatch(matchId, 'score', winningSide);
         return;
       }
-
-      if (updated.timeouts.a >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'b'); return; }
-      if (updated.timeouts.b >= MAX_TIMEOUTS) { await this.endMatch(matchId, 'timeout', 'a'); return; }
 
       // Brief pause between hands
       await new Promise<void>((resolve) => setTimeout(resolve, 2000));
@@ -732,8 +860,12 @@ export class MatchManagerService {
     } else if (gameType === 'poker') {
       const pkState = this.pokerStates.get(matchId);
       if (pkState) {
-        if (pkState.players.a.stack > pkState.players.b.stack) forcedWinner = 'a';
-        else if (pkState.players.b.stack > pkState.players.a.stack) forcedWinner = 'b';
+        // Find player with most chips
+        const livePlayers = pkState.players.filter(p => !p.isEliminated);
+        const sorted = [...livePlayers].sort((a, b) => b.stack - a.stack);
+        if (sorted.length > 0 && sorted[0].stack > (sorted[1]?.stack ?? 0)) {
+          forcedWinner = sorted[0].seatIndex === 0 ? 'a' : 'b';
+        }
       }
     } else {
       const { scores } = matchState.gameState;
@@ -753,19 +885,22 @@ export class MatchManagerService {
     const matchState = this.activeMatches.getMatch(matchId);
     if (matchState?.clock) matchState.clock.stop();
 
-    const agentIds = matchState
-      ? { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId }
-      : undefined;
-    this.eventBus.emit('match:error', { matchId, agentIds, error: errorMessage });
+    const errorPayload: any = { matchId, error: errorMessage };
+    if (matchState?.pokerAgents && matchState.pokerAgents.length > 0) {
+      errorPayload.pokerPlayerIds = matchState.pokerAgents.map(a => a.agentId);
+    } else if (matchState) {
+      errorPayload.agentIds = { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId };
+    }
+    this.eventBus.emit('match:error', errorPayload);
 
     try {
       await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
       try { await this.settlement.refund(matchId); } catch {}
       if (matchState) {
-        await Promise.all([
-          this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
-          this.agentModel.updateOne({ _id: matchState.agents.b.agentId }, { status: 'idle' }),
-        ]);
+        const allIds = matchState.pokerAgents && matchState.pokerAgents.length > 0
+          ? matchState.pokerAgents.map(a => a.agentId)
+          : [matchState.agents.a.agentId, matchState.agents.b.agentId];
+        await Promise.all(allIds.map(id => this.agentModel.updateOne({ _id: id }, { status: 'idle' })));
       }
     } catch {}
 
@@ -842,8 +977,11 @@ export class MatchManagerService {
             else if (materialScore < 0) forcedWinner = 'b';
           } else if (gameType === 'poker' && match.pokerState) {
             const pkState = match.pokerState as PokerGameState;
-            if (pkState.players.a.stack > pkState.players.b.stack) forcedWinner = 'a';
-            else if (pkState.players.b.stack > pkState.players.a.stack) forcedWinner = 'b';
+            const livePlayers = pkState.players.filter(p => !p.isEliminated);
+            const sorted = [...livePlayers].sort((a, b) => b.stack - a.stack);
+            if (sorted.length > 0 && sorted[0].stack > (sorted[1]?.stack ?? 0)) {
+              forcedWinner = sorted[0].seatIndex === 0 ? 'a' : 'b';
+            }
           } else if (scores) {
             if (scores.a > scores.b) forcedWinner = 'a';
             else if (scores.b > scores.a) forcedWinner = 'b';
@@ -940,7 +1078,7 @@ export class MatchManagerService {
             board: [] as unknown as Board,
             currentPlayer: currentColor,
             moveNumber: match.moveCount,
-            scores: { black: pkState.players.a.stack, white: pkState.players.b.stack },
+            scores: { black: pkState.players[0]?.stack ?? 0, white: pkState.players[1]?.stack ?? 0 },
             gameOver: false,
             winner: null,
           };

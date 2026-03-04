@@ -27,7 +27,7 @@ export type PokerStreet = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
 export interface PokerAction {
   type: PokerActionType;
   amount?: number;
-  playerSide: 'a' | 'b';
+  playerIndex: number;
   street: PokerStreet;
   timestamp: number;
 }
@@ -44,9 +44,16 @@ export interface PokerLegalActions {
   allInAmount: number;
 }
 
+// ─── Side Pots ────────────────────────────────────────
+export interface PokerSidePot {
+  amount: number;
+  eligibleIndices: number[];  // seat indices eligible to win this pot
+}
+
 // ─── Player State ──────────────────────────────────────
 export interface PokerPlayerState {
-  side: 'a' | 'b';
+  seatIndex: number;
+  playerId: string;     // agentId
   stack: number;
   holeCards: Card[];
   currentBet: number;
@@ -54,6 +61,7 @@ export interface PokerPlayerState {
   hasFolded: boolean;
   isAllIn: boolean;
   isDealer: boolean;
+  isEliminated: boolean;  // out of chips, no longer in the game
 }
 
 // ─── Game State ────────────────────────────────────────
@@ -61,32 +69,32 @@ export interface PokerGameState {
   handNumber: number;
   street: PokerStreet;
   pot: number;
+  sidePots: PokerSidePot[];
   communityCards: Card[];
   deck: Card[];
 
-  players: {
-    a: PokerPlayerState;
-    b: PokerPlayerState;
-  };
+  players: PokerPlayerState[];
 
   smallBlind: number;
   bigBlind: number;
-  dealerSide: 'a' | 'b';
+  dealerIndex: number;
 
-  currentPlayerSide: 'a' | 'b';
-  lastAggressor: 'a' | 'b' | null;
+  currentPlayerIndex: number;
+  lastAggressor: number | null;
   actionsThisStreet: PokerAction[];
   actionHistory: PokerAction[];
 
   startingStack: number;
   gameOver: boolean;
-  winner: 'a' | 'b' | 'draw' | null;
+  winnerIndices: number[] | null;   // indices of final winner(s) — last player(s) standing
   winReason: 'fold' | 'showdown' | 'all_in_runout' | null;
-  showdownResult?: {
-    winnerSide: 'a' | 'b' | 'draw';
-    winnerHand: HandRank;
-    loserHand: HandRank;
-  };
+  showdownResult?: PokerShowdownResult[];
+}
+
+export interface PokerShowdownResult {
+  seatIndex: number;
+  hand: HandRank;
+  won: number;          // chips won from pot(s)
 }
 
 // ─── Move Request (sent to agents) ────────────────────
@@ -95,19 +103,29 @@ export interface PokerMoveRequest {
   gameType: 'poker';
   handNumber: number;
   street: PokerStreet;
-  yourSide: 'a' | 'b';
+  yourSeatIndex: number;
   yourHoleCards: Card[];
   communityCards: Card[];
   pot: number;
   yourStack: number;
-  opponentStack: number;
   yourCurrentBet: number;
-  opponentCurrentBet: number;
+  players: PokerMoveRequestPlayer[];
   legalActions: PokerLegalActions;
   actionHistory: PokerAction[];
   blinds: { small: number; big: number };
   isDealer: boolean;
+  dealerIndex: number;
   timeRemainingMs: number;
+}
+
+export interface PokerMoveRequestPlayer {
+  seatIndex: number;
+  stack: number;
+  currentBet: number;
+  hasFolded: boolean;
+  isAllIn: boolean;
+  isDealer: boolean;
+  isEliminated: boolean;
 }
 
 // ─── Move Response (from agents) ──────────────────────

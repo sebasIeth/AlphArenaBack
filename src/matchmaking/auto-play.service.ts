@@ -102,9 +102,16 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleMatchEnded(data: MatchEndedEvent): Promise<void> {
-    const { agentIds } = data;
+    // Collect all agent IDs from the event (supports both 1v1 and N-player poker)
+    const allAgentIds: string[] = [];
+    if (data.agentIds) {
+      allAgentIds.push(data.agentIds.a, data.agentIds.b);
+    }
+    if (data.pokerPlayerIds) {
+      allAgentIds.push(...data.pokerPlayerIds);
+    }
 
-    for (const agentId of [agentIds.a, agentIds.b]) {
+    for (const agentId of allAgentIds) {
       try {
         await this.agentModel.updateOne(
           { _id: agentId, autoPlay: true },
@@ -122,10 +129,16 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleMatchError(data: MatchErrorEvent): Promise<void> {
-    if (!data.agentIds) return;
-    const { agentIds } = data;
+    const allAgentIds: string[] = [];
+    if (data.agentIds) {
+      allAgentIds.push(data.agentIds.a, data.agentIds.b);
+    }
+    if (data.pokerPlayerIds) {
+      allAgentIds.push(...data.pokerPlayerIds);
+    }
+    if (allAgentIds.length === 0) return;
 
-    for (const agentId of [agentIds.a, agentIds.b]) {
+    for (const agentId of allAgentIds) {
       try {
         const agent = await this.agentModel.findOneAndUpdate(
           { _id: agentId, autoPlay: true },
@@ -155,20 +168,34 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleQueueJoined(data: MatchmakingQueueJoinedEvent): Promise<void> {
-    // When a human player joins a queue, recruit an idle auto-play bot for the same gameType
+    // When a human player joins a queue, recruit idle auto-play bots
     if (data.agentType !== 'human') return;
 
     try {
-      const waiting = await this.matchmakingService.getQueueSize(data.gameType);
-      // Only recruit if the human is alone (no opponent yet)
-      if (waiting > 1) return;
+      if (data.gameType === 'poker') {
+        // For poker lobby, recruit multiple bots (target: 2-3 bots to fill the lobby)
+        const POKER_BOT_TARGET = 2;
+        const currentSize = await this.matchmakingService.getQueueSize('poker');
+        const botsNeeded = Math.max(0, POKER_BOT_TARGET + 1 - currentSize); // +1 for the human
 
-      await this.recruitForGameType(data.gameType);
+        for (let i = 0; i < botsNeeded; i++) {
+          await this.recruitForGameType('poker');
+        }
 
-      // Check if recruitment succeeded (queue now has 2+ entries)
-      const afterWaiting = await this.matchmakingService.getQueueSize(data.gameType);
-      if (afterWaiting < 2) {
-        this.scheduleRecruitmentRetry(data.gameType);
+        const afterSize = await this.matchmakingService.getQueueSize('poker');
+        if (afterSize < 2) {
+          this.scheduleRecruitmentRetry('poker');
+        }
+      } else {
+        const waiting = await this.matchmakingService.getQueueSize(data.gameType);
+        if (waiting > 1) return;
+
+        await this.recruitForGameType(data.gameType);
+
+        const afterWaiting = await this.matchmakingService.getQueueSize(data.gameType);
+        if (afterWaiting < 2) {
+          this.scheduleRecruitmentRetry(data.gameType);
+        }
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

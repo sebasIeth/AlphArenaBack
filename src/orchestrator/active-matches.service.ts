@@ -9,17 +9,30 @@ export interface MatchClockInterface {
   getTimeRemainingMs(): number;
 }
 
+export interface PokerAgentInfo {
+  seatIndex: number;
+  agentId: string;
+  endpointUrl: string;
+  walletAddress?: string;
+  type?: string;
+  openclawUrl?: string;
+  openclawToken?: string;
+  openclawAgentId?: string;
+}
+
 export interface ActiveMatchState {
   matchId: string;
   gameState: GameState;
   clock: MatchClockInterface | null;
   turnDeadline: number;
   timeouts: { a: number; b: number };
+  pokerTimeouts?: Record<number, number>; // seatIndex -> timeout count (for poker)
   status: 'starting' | 'active';
   agents: {
     a: { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string; type?: string; openclawUrl?: string; openclawToken?: string; openclawAgentId?: string };
     b: { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string; type?: string; openclawUrl?: string; openclawToken?: string; openclawAgentId?: string };
   };
+  pokerAgents?: PokerAgentInfo[];
   startedAt: number;
 }
 

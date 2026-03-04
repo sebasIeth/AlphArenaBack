@@ -60,6 +60,16 @@ export class OrchestratorService implements OnModuleInit, OnModuleDestroy {
     return matchId;
   }
 
+  async startPokerMatch(
+    players: MatchAgentInput[],
+    stakeAmount: number,
+  ): Promise<string> {
+    if (!this.running) throw new Error('OrchestratorService is not running.');
+    const matchId = await this.matchManager.createPokerMultiplayerMatch(players, stakeAmount);
+    await this.matchManager.startMatch(matchId);
+    return matchId;
+  }
+
   getActiveMatch(matchId: string): ActiveMatchState | undefined {
     return this.activeMatches.getMatch(matchId);
   }

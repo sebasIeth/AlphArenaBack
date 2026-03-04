@@ -38,9 +38,36 @@ export class MatchResultSubDoc {
 
   @Prop({ type: Object, required: true })
   eloChange: { a: number; b: number };
+
+  // N-player poker results (optional, only for poker)
+  @Prop({ type: Object, default: null })
+  pokerFinalScores: Record<string, number>;  // agentId -> final stack
+
+  @Prop({ type: Object, default: null })
+  pokerEloChanges: Record<string, number>;   // agentId -> elo delta
 }
 
 export const MatchResultSubDocSchema = SchemaFactory.createForClass(MatchResultSubDoc);
+
+@Schema({ _id: false })
+export class PokerPlayerSubDoc {
+  @Prop({ required: true })
+  seatIndex: number;
+
+  @Prop({ type: Types.ObjectId, ref: 'Agent', required: true })
+  agentId: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  userId: Types.ObjectId;
+
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true })
+  eloAtStart: number;
+}
+
+export const PokerPlayerSubDocSchema = SchemaFactory.createForClass(PokerPlayerSubDoc);
 
 @Schema({ timestamps: true, collection: 'matches', toJSON: { virtuals: true }, toObject: { virtuals: true } })
 export class Match extends Document {
@@ -52,9 +79,12 @@ export class Match extends Document {
       a: { type: MatchAgentSubDocSchema, required: true },
       b: { type: MatchAgentSubDocSchema, required: true },
     },
-    required: true,
+    required: false,
   })
   agents: { a: MatchAgentSubDoc; b: MatchAgentSubDoc };
+
+  @Prop({ type: [PokerPlayerSubDocSchema], default: undefined })
+  pokerPlayers: PokerPlayerSubDoc[];
 
   @Prop({ required: true })
   stakeAmount: number;
@@ -95,6 +125,9 @@ export class Match extends Document {
 
   @Prop({ type: Object, default: null })
   scores: { a: number; b: number };
+
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null })
+  pokerScores: Record<string, number>;
 
   @Prop({ type: MongooseSchema.Types.Mixed, default: null })
   marrakechState: any;
