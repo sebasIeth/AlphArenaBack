@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
@@ -113,8 +113,9 @@ export class AuthService {
 
     try {
       await this.mailService.sendPasswordResetEmail(user.email!, user.username, rawToken);
-    } catch {
-      this.logger.error(`Failed to send reset email to ${user.email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send reset email to ${user.email}`, error);
+      throw new InternalServerErrorException('Failed to send reset email. Please try again later.');
     }
 
     return { message: genericMessage };
