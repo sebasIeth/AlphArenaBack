@@ -41,6 +41,25 @@ export class PlayService {
       await agent.save();
     }
 
+    // Recover stale in_match status (match already ended but agent wasn't reset)
+    if (agent.status === 'in_match') {
+      const agentIdStr = agent._id.toString();
+      const activeMatch = await this.matchModel.findOne({
+        $or: [
+          { 'agents.a.agentId': agentIdStr },
+          { 'agents.b.agentId': agentIdStr },
+          { 'pokerPlayers.agentId': agent._id },
+        ],
+        status: { $in: ['starting', 'active'] },
+      }).select('_id').lean();
+
+      if (!activeMatch) {
+        this.logger.log(`Recovering stale in_match status for agent ${agentIdStr}`);
+        agent.status = 'idle';
+        await agent.save();
+      }
+    }
+
     if (agent.status !== 'idle') {
       throw new BadRequestException(`Your player agent is currently "${agent.status}". It must be "idle" to join the queue.`);
     }

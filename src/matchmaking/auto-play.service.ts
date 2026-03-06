@@ -173,19 +173,9 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
 
     try {
       if (data.gameType === 'poker') {
-        // For poker lobby, recruit multiple bots (target: 2-3 bots to fill the lobby)
-        const POKER_BOT_TARGET = 2;
-        const currentSize = await this.matchmakingService.getQueueSize('poker');
-        const botsNeeded = Math.max(0, POKER_BOT_TARGET + 1 - currentSize); // +1 for the human
-
-        for (let i = 0; i < botsNeeded; i++) {
-          await this.recruitForGameType('poker');
-        }
-
-        const afterSize = await this.matchmakingService.getQueueSize('poker');
-        if (afterSize < 2) {
-          this.scheduleRecruitmentRetry('poker');
-        }
+        // Recruit ALL available autoplay bots into the poker lobby
+        await this.recruitAllForPoker();
+        return;
       } else {
         const waiting = await this.matchmakingService.getQueueSize(data.gameType);
         if (waiting > 1) return;
@@ -234,6 +224,42 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
       clearTimeout(timer);
       this.recruitmentTimers.delete(gameType);
     }
+  }
+
+  private async recruitAllForPoker(): Promise<void> {
+    const idleAgents = await this.agentModel.find({
+      autoPlay: true,
+      type: { $ne: 'human' },
+      status: 'idle',
+      gameTypes: 'poker',
+      autoPlayConsecutiveErrors: { $lt: AUTO_PLAY_MAX_CONSECUTIVE_ERRORS },
+    });
+
+    let recruited = 0;
+    for (const agent of idleAgents) {
+      this.cancelPendingRequeue(agent._id.toString());
+      const success = await this.requeueAgentForGameType(agent._id.toString(), 'poker');
+      if (success) recruited++;
+    }
+
+    const queueEntries = this.matchmakingService.getQueueEntries();
+    for (const entry of queueEntries) {
+      if (entry.gameType === 'poker') continue;
+      if (entry.agentType === 'human') continue;
+      const candidate = await this.agentModel.findOne({
+        _id: entry.agentId, autoPlay: true, type: { $ne: 'human' }, gameTypes: 'poker',
+      });
+      if (candidate) {
+        await this.matchmakingService.leaveQueue(entry.agentId);
+        candidate.status = 'idle';
+        await candidate.save();
+        this.cancelPendingRequeue(candidate._id.toString());
+        const success = await this.requeueAgentForGameType(candidate._id.toString(), 'poker');
+        if (success) recruited++;
+      }
+    }
+
+    this.logger.log(`Poker lobby: recruited ${recruited} autoplay bots`);
   }
 
   private async recruitForGameType(gameType: string): Promise<void> {
@@ -391,9 +417,12 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // If no queue has waiting players, fall back to random supported type
+    // If no queue has waiting players, fall back to random non-poker type
+    // (poker uses lobby system — bots join via recruitAllForPoker when a human joins)
     if (maxWaiting <= 0) {
-      gameType = supportedTypes[Math.floor(Math.random() * supportedTypes.length)];
+      const nonPokerTypes = supportedTypes.filter(gt => gt !== 'poker');
+      if (nonPokerTypes.length === 0) return;
+      gameType = nonPokerTypes[Math.floor(Math.random() * nonPokerTypes.length)];
     }
 
     const stakeAmount = MIN_STAKE;

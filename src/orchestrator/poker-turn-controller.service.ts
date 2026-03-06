@@ -89,15 +89,19 @@ export class PokerTurnControllerService {
         const timeRemainingMs = matchState.clock ? matchState.clock.getTimeRemainingMs() : 0;
 
         // Build sanitized move request — other players don't get hole cards
-        const playersInfo: PokerMoveRequestPlayer[] = state.players.map(p => ({
-          seatIndex: p.seatIndex,
-          stack: p.stack,
-          currentBet: p.currentBet,
-          hasFolded: p.hasFolded,
-          isAllIn: p.isAllIn,
-          isDealer: p.isDealer,
-          isEliminated: p.isEliminated,
-        }));
+        const playersInfo: PokerMoveRequestPlayer[] = state.players.map(p => {
+          const agentInfo = matchState.pokerAgents?.find(a => a.agentId === p.playerId);
+          return {
+            seatIndex: p.seatIndex,
+            name: agentInfo?.name,
+            stack: p.stack,
+            currentBet: p.currentBet,
+            hasFolded: p.hasFolded,
+            isAllIn: p.isAllIn,
+            isDealer: p.isDealer,
+            isEliminated: p.isEliminated,
+          };
+        });
 
         const moveRequest: PokerMoveRequest = {
           matchId,
@@ -205,14 +209,18 @@ export class PokerTurnControllerService {
           pokerStreet: state.street,
           pokerPot: state.pot,
           pokerCommunityCards: state.communityCards,
-          pokerPlayers: state.players.map(p => ({
-            seatIndex: p.seatIndex,
-            stack: p.stack,
-            currentBet: p.currentBet,
-            hasFolded: p.hasFolded,
-            isAllIn: p.isAllIn,
-            isEliminated: p.isEliminated,
-          })),
+          pokerPlayers: state.players.map(p => {
+            const agentInfo = matchState.pokerAgents?.find(a => a.agentId === p.playerId);
+            return {
+              seatIndex: p.seatIndex,
+              name: agentInfo?.name,
+              stack: p.stack,
+              currentBet: p.currentBet,
+              hasFolded: p.hasFolded,
+              isAllIn: p.isAllIn,
+              isEliminated: p.isEliminated,
+            };
+          }),
           pokerHandNumber: state.handNumber,
           pokerPlayerIndex: currentIndex,
         });
@@ -274,11 +282,11 @@ export class PokerTurnControllerService {
     // Fallback to 2-player agents
     if (matchState.agents.a.agentId === playerId) {
       const a = matchState.agents.a;
-      return { seatIndex: 0, agentId: a.agentId, endpointUrl: a.endpointUrl, walletAddress: a.walletAddress, type: a.type };
+      return { seatIndex: 0, agentId: a.agentId, name: 'Player A', endpointUrl: a.endpointUrl, walletAddress: a.walletAddress, type: a.type };
     }
     if (matchState.agents.b.agentId === playerId) {
       const b = matchState.agents.b;
-      return { seatIndex: 1, agentId: b.agentId, endpointUrl: b.endpointUrl, walletAddress: b.walletAddress, type: b.type };
+      return { seatIndex: 1, agentId: b.agentId, name: 'Player B', endpointUrl: b.endpointUrl, walletAddress: b.walletAddress, type: b.type };
     }
     return null;
   }

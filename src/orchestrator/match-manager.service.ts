@@ -379,6 +379,7 @@ export class MatchManagerService {
     const pokerAgents = players.map((p, i) => ({
       seatIndex: i,
       agentId: p.agentId,
+      name: p.name,
       endpointUrl: p.endpointUrl,
       type: p.type,
       openclawUrl: p.openclawUrl,
@@ -560,11 +561,15 @@ export class MatchManagerService {
       if (pkState) {
         if (updatedMatchState?.pokerAgents && updatedMatchState.pokerAgents.length > 0) {
           // N-player poker
-          startedPayload.pokerPlayers = pkState.players.map(p => ({
-            seatIndex: p.seatIndex,
-            playerId: p.playerId,
-            stack: p.stack,
-          }));
+          startedPayload.pokerPlayers = pkState.players.map(p => {
+            const agentInfo = updatedMatchState.pokerAgents!.find(a => a.agentId === p.playerId);
+            return {
+              seatIndex: p.seatIndex,
+              playerId: p.playerId,
+              name: agentInfo?.name ?? `Player ${p.seatIndex + 1}`,
+              stack: p.stack,
+            };
+          });
         } else {
           // Legacy 2-player
           startedPayload.pokerPlayerStacks = { a: pkState.startingStack, b: pkState.startingStack };

@@ -12,6 +12,7 @@ export interface MatchClockInterface {
 export interface PokerAgentInfo {
   seatIndex: number;
   agentId: string;
+  name: string;
   endpointUrl: string;
   walletAddress?: string;
   type?: string;

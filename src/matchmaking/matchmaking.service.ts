@@ -227,8 +227,9 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     this.eventBus.emit('matchmaking:queue_joined', { agentId, gameType: 'poker', agentType });
     this.emitPokerLobbyUpdate();
 
-    // Start countdown when we reach minimum players
-    if (this.pokerLobby.players.length >= POKER_MIN_PLAYERS && !this.pokerLobby.countdownStartedAt) {
+    // Start countdown when we reach minimum players AND at least one human is present
+    const hasHuman = this.pokerLobby.players.some(p => p.agentType === 'human');
+    if (this.pokerLobby.players.length >= POKER_MIN_PLAYERS && hasHuman && !this.pokerLobby.countdownStartedAt) {
       this.pokerLobby.countdownStartedAt = Date.now();
       this.logger.log(`Poker lobby countdown started (${this.pokerLobby.players.length} players)`);
     }

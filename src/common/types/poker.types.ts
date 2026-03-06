@@ -120,6 +120,7 @@ export interface PokerMoveRequest {
 
 export interface PokerMoveRequestPlayer {
   seatIndex: number;
+  name?: string;
   stack: number;
   currentBet: number;
   hasFolded: boolean;
