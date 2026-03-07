@@ -18,6 +18,7 @@ import { GameEngineModule } from './game-engine/game-engine.module';
 import { OpenClawWsModule } from './openclaw-ws';
 import { PlayModule } from './play/play.module';
 import { MailModule } from './mail/mail.module';
+import { BridgeModule } from './bridge/bridge.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -48,6 +49,7 @@ ScheduleModule.forRoot(),
     PlayModule,
     WorkerModule,
     GameEngineModule,
+    BridgeModule,
   ],
   controllers: [HealthController],
   providers: [],

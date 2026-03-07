@@ -4,7 +4,12 @@
       "Bash(git pull:*)",
       "Bash(git fetch:*)",
       "Bash(git merge:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git:*)"
     ]
   }
 }
