@@ -1,4 +1,4 @@
-import { IsString, MinLength, MaxLength, IsUrl, IsArray, IsIn, IsOptional, ValidateIf } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsUrl, IsArray, ArrayMinSize, IsIn, IsOptional, ValidateIf } from 'class-validator';
 
 export class CreateAgentDto {
   @IsString()
@@ -32,6 +32,6 @@ export class CreateAgentDto {
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one game type is required' })
-  @IsIn(['marrakech', 'chess', 'poker'], { each: true })
+  @IsIn(['chess', 'poker'], { each: true })
   gameTypes: string[];
 }

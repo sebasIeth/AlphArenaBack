@@ -28,7 +28,7 @@ export class UpdateAgentDto {
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one game type is required' })
-  @IsIn(['marrakech', 'chess', 'poker'], { each: true })
+  @IsIn(['chess', 'poker'], { each: true })
   gameTypes?: string[];
 
   @IsOptional()

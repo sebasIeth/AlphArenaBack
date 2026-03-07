@@ -21,7 +21,7 @@ export const PIECE = {
 export const AUTO_PLAY_REQUEUE_DELAY_MS = 10_000;
 export const AUTO_PLAY_MAX_CONSECUTIVE_ERRORS = 3;
 
-export const GAME_TYPES = ['marrakech', 'chess', 'poker'] as const;
+export const GAME_TYPES = ['chess', 'poker'] as const;
 
 export const POKER_SMALL_BLIND = 10;
 export const POKER_BIG_BLIND = 20;
