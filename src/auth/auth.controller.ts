@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, UseGuards, NotFoundException, HttpCode } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
+import { SendVerificationCodeDto } from './dto/send-verification-code.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -12,6 +13,12 @@ import { SkipThrottle } from '@nestjs/throttler';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Post('send-verification-code')
+  @HttpCode(200)
+  async sendVerificationCode(@Body() dto: SendVerificationCodeDto) {
+    return this.authService.sendVerificationCode(dto);
+  }
 
   @Post('register')
   async register(@Body() dto: RegisterDto) {

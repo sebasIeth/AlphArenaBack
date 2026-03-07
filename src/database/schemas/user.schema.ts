@@ -16,6 +16,9 @@ export class User extends Document {
   @Prop({ type: String, unique: true, sparse: true, default: null })
   email: string | null;
 
+  @Prop({ default: false })
+  isEmailVerified: boolean;
+
   @Prop({ required: true })
   passwordHash: string;
 
@@ -27,6 +30,12 @@ export class User extends Document {
 
   @Prop({ type: Date, default: null })
   resetPasswordExpires: Date | null;
+
+  @Prop({ type: String, default: null })
+  emailVerificationCode: string | null;
+
+  @Prop({ type: Date, default: null })
+  emailVerificationExpires: Date | null;
 
   createdAt: Date;
   updatedAt: Date;

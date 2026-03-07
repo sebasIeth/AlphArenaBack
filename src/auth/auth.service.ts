@@ -9,6 +9,7 @@ import { User } from '../database/schemas';
 import { ConfigService } from '../common/config/config.service';
 import { MailService } from '../mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
+import { SendVerificationCodeDto } from './dto/send-verification-code.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -17,6 +18,7 @@ import { AuthPayload } from '../common/types';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly verificationCodes = new Map<string, { hashedCode: string; expires: Date }>();
 
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
@@ -24,19 +26,60 @@ export class AuthService {
     private readonly mailService: MailService,
   ) {}
 
+  async sendVerificationCode(dto: SendVerificationCodeDto) {
+    const { email } = dto;
+
+    const existingUser = await this.userModel.findOne({ email, isEmailVerified: true });
+    if (existingUser) {
+      throw new ConflictException('Email is already registered');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+    const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    this.verificationCodes.set(email, { hashedCode, expires });
+
+    try {
+      await this.mailService.sendVerificationCodeEmail(email, code);
+    } catch {
+      this.logger.error(`Failed to send verification code to ${email}`);
+      throw new BadRequestException('Failed to send verification email. Please try again.');
+    }
+
+    return { message: 'Verification code sent to your email' };
+  }
+
   async register(dto: RegisterDto) {
-    const { username, password, email } = dto;
+    const { username, password, email, verificationCode } = dto;
+
+    // Verify the email code
+    const stored = this.verificationCodes.get(email);
+    if (!stored) {
+      throw new BadRequestException('No verification code found for this email. Please request a new one.');
+    }
+
+    if (stored.expires < new Date()) {
+      this.verificationCodes.delete(email);
+      throw new BadRequestException('Verification code has expired. Please request a new one.');
+    }
+
+    const hashedInput = crypto.createHash('sha256').update(verificationCode).digest('hex');
+    if (hashedInput !== stored.hashedCode) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    // Code is valid — remove it
+    this.verificationCodes.delete(email);
 
     const existingUsername = await this.userModel.findOne({ username });
     if (existingUsername) {
       throw new ConflictException('Username is already taken');
     }
 
-    if (email) {
-      const existingEmail = await this.userModel.findOne({ email });
-      if (existingEmail) {
-        throw new ConflictException('Email is already registered');
-      }
+    const existingEmail = await this.userModel.findOne({ email });
+    if (existingEmail) {
+      throw new ConflictException('Email is already registered');
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -50,7 +93,8 @@ export class AuthService {
       passwordHash,
       walletAddress: account.address,
       walletPrivateKey: privKey,
-      email: email ?? null,
+      email,
+      isEmailVerified: true,
       balance: 0,
     });
 
