@@ -21,7 +21,7 @@ export interface MatchStartedEvent {
   pokerPlayerStacks?: { a: number; b: number };
   pokerHandNumber?: number;
   // Poker N-player
-  pokerPlayers?: { seatIndex: number; playerId: string; stack: number }[];
+  pokerPlayers?: { seatIndex: number; playerId: string; name?: string; stack: number }[];
 }
 
 export interface MatchMoveEvent {
@@ -51,7 +51,7 @@ export interface MatchMoveEvent {
   pokerPlayerStacks?: { a: number; b: number };
   pokerHandNumber?: number;
   // Poker N-player
-  pokerPlayers?: { seatIndex: number; stack: number; currentBet: number; hasFolded: boolean; isAllIn: boolean; isEliminated: boolean }[];
+  pokerPlayers?: { seatIndex: number; name?: string; stack: number; currentBet: number; hasFolded: boolean; isAllIn: boolean; isEliminated: boolean }[];
   pokerPlayerIndex?: number;
 }
 
@@ -123,8 +123,9 @@ export interface MatchYourTurnEvent {
   pokerIsDealer?: boolean;
   pokerActionHistory?: { type: string; amount?: number; playerSide?: string; playerIndex?: number; street: string }[];
   // Poker N-player
-  pokerPlayers?: { seatIndex: number; stack: number; currentBet: number; hasFolded: boolean; isAllIn: boolean; isDealer: boolean; isEliminated: boolean }[];
+  pokerPlayers?: { seatIndex: number; name?: string; stack: number; currentBet: number; hasFolded: boolean; isAllIn: boolean; isDealer: boolean; isEliminated: boolean }[];
   pokerSeatIndex?: number;
+  pokerCurrentPlayerIndex?: number;
 }
 
 export interface PokerLobbyUpdateEvent {

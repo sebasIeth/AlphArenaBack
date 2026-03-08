@@ -154,6 +154,7 @@ export class PokerTurnControllerService {
               pokerActionHistory: state.actionHistory.map((a) => ({
                 type: a.type, amount: a.amount, playerIndex: a.playerIndex, street: a.street,
               })),
+              pokerCurrentPlayerIndex: currentIndex,
             });
 
             const humanMove = await this.humanMoveService.waitForMove(matchId, this.seatToSide(currentIndex), agent.agentId);
