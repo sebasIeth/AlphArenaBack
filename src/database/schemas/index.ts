@@ -4,3 +4,4 @@ export { Match, MatchSchema, MatchAgentSubDoc, MatchResultSubDoc } from './match
 export { MoveDoc, MoveSchema } from './move.schema';
 export { Transaction, TransactionSchema } from './transaction.schema';
 export { QueueEntry, QueueEntrySchema } from './queue-entry.schema';
+export { Bet, BetSchema } from './bet.schema';
