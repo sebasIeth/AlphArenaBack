@@ -182,7 +182,7 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
 
     // Verify on-chain balance before queuing
     if (agent.walletAddress) {
-      const balance = await this.settlement.getAgentAlphaBalance(agent.walletAddress);
+      const balance = await this.settlement.getAgentAlphaBalance(agent.walletAddress, (agent.chain || 'base') as any);
       if (parseFloat(balance) < stakeAmount) {
         this.logger.warn(
           `Auto-play: agent ${agentId} has insufficient balance (${balance}) for stake ${stakeAmount}. Disabling auto-play.`,
@@ -203,6 +203,7 @@ export class AutoPlayService implements OnModuleInit, OnModuleDestroy {
         stakeAmount,
         gameType,
         agent.type,
+        agent.chain || 'base',
       );
 
       this.logger.log(`Auto-play: agent ${agentId} re-queued for ${gameType} (stake=${stakeAmount})`);

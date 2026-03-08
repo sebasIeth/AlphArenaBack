@@ -23,6 +23,9 @@ export const AUTO_PLAY_MAX_CONSECUTIVE_ERRORS = 3;
 
 export const GAME_TYPES = ['chess', 'poker'] as const;
 
+export const SUPPORTED_CHAINS = ['base', 'celo'] as const;
+export type ChainName = (typeof SUPPORTED_CHAINS)[number];
+
 export const POKER_SMALL_BLIND = 10;
 export const POKER_BIG_BLIND = 20;
 

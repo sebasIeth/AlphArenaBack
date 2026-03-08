@@ -26,6 +26,7 @@ export class ConfigService {
     return process.env.JWT_EXPIRES_IN || '7d';
   }
 
+  // ── Base chain ──────────────────────────────────────────────
   get rpcUrl(): string | undefined {
     return process.env.RPC_URL;
   }
@@ -46,6 +47,28 @@ export class ConfigService {
     return process.env.PRIVATE_KEY;
   }
 
+  // ── Celo chain ──────────────────────────────────────────────
+  get celoRpcUrl(): string | undefined {
+    return process.env.CELO_RPC_URL;
+  }
+
+  get celoChainId(): number {
+    return parseInt(process.env.CELO_CHAIN_ID || '11142220', 10);
+  }
+
+  get celoContractAddress(): string | undefined {
+    return process.env.CELO_CONTRACT_ADDRESS;
+  }
+
+  get celoAlphaAddress(): string | undefined {
+    return process.env.CELO_ALPHA_ADDRESS;
+  }
+
+  get celoPrivateKey(): string | undefined {
+    return process.env.CELO_PRIVATE_KEY || process.env.PRIVATE_KEY;
+  }
+
+  // ── Game ────────────────────────────────────────────────────
   get matchDurationMs(): number {
     return parseInt(process.env.MATCH_DURATION_MS || '1200000', 10);
   }
@@ -78,6 +101,7 @@ export class ConfigService {
     return parseInt(process.env.ELO_MATCH_RANGE || '200', 10);
   }
 
+  // ── Mail ────────────────────────────────────────────────────
   get smtpHost(): string {
     return process.env.SMTP_HOST || 'smtp.gmail.com';
   }

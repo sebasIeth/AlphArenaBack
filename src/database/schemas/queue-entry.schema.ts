@@ -18,6 +18,9 @@ export class QueueEntry extends Document {
   @Prop({ required: true })
   gameType: string;
 
+  @Prop({ type: String, enum: ['base', 'celo'], default: 'base' })
+  chain: string;
+
   @Prop({ type: String, enum: ['waiting', 'pairing'], default: 'waiting' })
   status: string;
 

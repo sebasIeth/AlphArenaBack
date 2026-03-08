@@ -20,8 +20,8 @@ export class PlayService {
     private readonly humanMoveService: HumanMoveService,
   ) {}
 
-  async joinQueue(userId: string, gameType: string, stakeAmount: number) {
-    const agent = await this.getOrCreateHumanAgent(userId, gameType);
+  async joinQueue(userId: string, gameType: string, stakeAmount: number, chain: string = 'base') {
+    const agent = await this.getOrCreateHumanAgent(userId, gameType, chain);
 
     // If already queued, check if actually in the matchmaking queue
     if (agent.status === 'queued') {
@@ -49,10 +49,11 @@ export class PlayService {
       throw new BadRequestException('Wallet not found. Please contact support.');
     }
 
-    // Verify wallet balance
+    // Verify wallet balance on the agent's chain
+    const agentChain = (agent.chain || 'base') as any;
     const [alphaBalance, ethBalance] = await Promise.all([
-      this.settlement.getAgentAlphaBalance(agent.walletAddress),
-      this.settlement.getAgentEthBalance(agent.walletAddress),
+      this.settlement.getAgentAlphaBalance(agent.walletAddress, agentChain),
+      this.settlement.getAgentEthBalance(agent.walletAddress, agentChain),
     ]);
 
     if (parseFloat(alphaBalance) < stakeAmount) {
@@ -71,7 +72,7 @@ export class PlayService {
     await agent.save();
 
     try {
-      await this.matchmakingService.joinQueue(agent._id.toString(), userId, agent.eloRating, stakeAmount, gameType, 'human');
+      await this.matchmakingService.joinQueue(agent._id.toString(), userId, agent.eloRating, stakeAmount, gameType, 'human', agentChain);
       return {
         message: 'Successfully joined the matchmaking queue',
         agentId: agent._id.toString(),
@@ -152,21 +153,37 @@ export class PlayService {
     return { inQueue: false, inMatch: false };
   }
 
-  async getBalance(userId: string) {
+  async getBalance(userId: string, chain: string = 'base') {
     const user = await this.userModel.findById(userId);
     if (!user || !user.walletAddress) {
       throw new NotFoundException('User wallet not found');
     }
 
+    const chainAvailable = this.settlement.getConfiguredChains().includes(chain as any);
+
+    if (!chainAvailable) {
+      return {
+        walletAddress: user.walletAddress,
+        alpha: '0',
+        eth: '0',
+        chain,
+        gasToken: chain === 'celo' ? 'CELO' : 'ETH',
+        chainAvailable: false,
+      };
+    }
+
     const [alpha, eth] = await Promise.all([
-      this.settlement.getAgentAlphaBalance(user.walletAddress),
-      this.settlement.getAgentEthBalance(user.walletAddress),
+      this.settlement.getAgentAlphaBalance(user.walletAddress, chain as any),
+      this.settlement.getAgentEthBalance(user.walletAddress, chain as any),
     ]);
 
     return {
       walletAddress: user.walletAddress,
       alpha,
       eth,
+      chain,
+      gasToken: chain === 'celo' ? 'CELO' : 'ETH',
+      chainAvailable: true,
     };
   }
 
@@ -190,12 +207,13 @@ export class PlayService {
     return { success: true };
   }
 
-  async getOrCreateHumanAgent(userId: string, gameType: string): Promise<Agent> {
-    // Find an existing human agent for this user that supports this game type
+  async getOrCreateHumanAgent(userId: string, gameType: string, chain: string = 'base'): Promise<Agent> {
+    // Find an existing human agent for this user that supports this game type and chain
     let agent = await this.agentModel.findOne({
       userId,
       type: 'human',
       gameTypes: gameType,
+      chain,
       status: { $ne: 'disabled' },
     });
 
@@ -215,6 +233,7 @@ export class PlayService {
       userId,
       name: user.username,
       type: 'human',
+      chain,
       gameTypes: [gameType],
       eloRating: DEFAULT_ELO,
       status: 'idle',
@@ -223,7 +242,7 @@ export class PlayService {
       walletPrivateKey: user.walletPrivateKey,
     });
 
-    this.logger.log(`Created human agent "${user.username}" for user ${userId} (gameType=${gameType})`);
+    this.logger.log(`Created human agent "${user.username}" for user ${userId} (gameType=${gameType}, chain=${chain})`);
     return agent;
   }
 }

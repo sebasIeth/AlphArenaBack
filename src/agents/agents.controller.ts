@@ -118,12 +118,13 @@ export class AgentsController {
     if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet');
 
+    const agentChain = (agent.chain || 'base') as any;
     const [alpha, eth] = await Promise.all([
-      this.settlement.getAgentAlphaBalance(agent.walletAddress),
-      this.settlement.getAgentEthBalance(agent.walletAddress),
+      this.settlement.getAgentAlphaBalance(agent.walletAddress, agentChain),
+      this.settlement.getAgentEthBalance(agent.walletAddress, agentChain),
     ]);
 
-    return { walletAddress: agent.walletAddress, alpha, eth };
+    return { walletAddress: agent.walletAddress, alpha, eth, chain: agentChain };
   }
 
   @Post(':id/withdraw')
@@ -143,8 +144,9 @@ export class AgentsController {
     const amountAlpha = BigInt(Math.round(dto.amount * 10 ** TOKEN_DECIMALS));
     const privKey = decrypt(agent.walletPrivateKey);
 
-    const txHash = await this.settlement.transferAlphaFromAgent(privKey, toAddress, amountAlpha);
-    return { txHash, amount: dto.amount, to: toAddress };
+    const agentChain = (agent.chain || 'base') as any;
+    const txHash = await this.settlement.transferAlphaFromAgent(privKey, toAddress, amountAlpha, agentChain);
+    return { txHash, amount: dto.amount, to: toAddress, chain: agentChain };
   }
 
   @Delete(':id')

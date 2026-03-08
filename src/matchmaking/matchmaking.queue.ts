@@ -11,6 +11,7 @@ export interface QueueEntryData {
   eloRating: number;
   stakeAmount: number;
   gameType: string;
+  chain: string;
   status: QueueEntryStatus;
   joinedAt: Date;
   agentType?: string;
@@ -31,6 +32,7 @@ export class MatchmakingQueue {
       eloRating: doc.eloRating,
       stakeAmount: doc.stakeAmount,
       gameType: doc.gameType,
+      chain: doc.chain || 'base',
       status: doc.status as QueueEntryStatus,
       joinedAt: doc.joinedAt,
     }));
@@ -47,6 +49,7 @@ export class MatchmakingQueue {
       eloRating: entry.eloRating,
       stakeAmount: entry.stakeAmount,
       gameType: entry.gameType,
+      chain: entry.chain,
       status: entry.status,
       joinedAt: entry.joinedAt,
     });

@@ -15,41 +15,25 @@ import {
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
 import * as chains from 'viem/chains';
 import { arenaAbi, erc20Abi } from './contracts/arena-abi';
+import { type ChainName } from '../common/constants/game.constants';
 
-/** ALPHA addresses per chain */
-const ALPHA_BY_CHAIN: Record<number, Address> = {
-  8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',  // Base mainnet
-  84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia
-};
-
-interface SettlementClients {
+interface ChainClients {
   publicClient: PublicClient<HttpTransport, Chain>;
   walletClient: WalletClient<HttpTransport, Chain, PrivateKeyAccount>;
   account: PrivateKeyAccount;
+  contractAddress: Address;
+  alphaAddress: Address;
+  rpcUrl: string;
+  chain: Chain;
+  chainName: ChainName;
 }
 
-/**
- * High-level NestJS service that wraps all on-chain settlement operations.
- *
- * All escrow/payout/refund operations use ALPHA (ERC-20) on Base.
- *
- * When blockchain configuration is not provided (common during local
- * development), every write method logs a warning and returns `null` instead
- * of a transaction hash.  This allows the rest of the platform to operate
- * normally without a live chain.
- */
 @Injectable()
 export class SettlementService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SettlementService.name);
-  private clients: SettlementClients | null = null;
-  private contractAddress: Address | null = null;
-  private alphaAddress: Address | null = null;
-  private rpcUrl: string | null = null;
-  private chain: Chain | null = null;
+  private readonly chainClients = new Map<ChainName, ChainClients>();
 
   constructor(private readonly configService: ConfigService) {}
-
-  // ── Lifecycle ────────────────────────────────────────────────────
 
   onModuleInit(): void {
     this.start();
@@ -59,63 +43,70 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
     this.stop();
   }
 
-  /**
-   * Initialise viem clients.  If any required blockchain config value is
-   * missing the service enters "no-op" mode and all write operations become
-   * safe stubs.
-   */
   private start(): void {
-    const rpcUrl = this.configService.rpcUrl;
-    const privateKey = this.configService.privateKey;
-    const contractAddr = this.configService.contractAddress;
-    const chainIdStr = String(this.configService.chainId);
-    const alphaAddr = this.configService.alphaAddress;
+    this.initChain('base', {
+      rpcUrl: this.configService.rpcUrl,
+      privateKey: this.configService.privateKey,
+      contractAddress: this.configService.contractAddress,
+      alphaAddress: this.configService.alphaAddress,
+      chainId: this.configService.chainId,
+    });
 
-    if (!rpcUrl || !privateKey || !contractAddr) {
+    this.initChain('celo', {
+      rpcUrl: this.configService.celoRpcUrl,
+      privateKey: this.configService.celoPrivateKey,
+      contractAddress: this.configService.celoContractAddress,
+      alphaAddress: this.configService.celoAlphaAddress,
+      chainId: this.configService.celoChainId,
+    });
+  }
+
+  private initChain(
+    chainName: ChainName,
+    config: {
+      rpcUrl?: string;
+      privateKey?: string;
+      contractAddress?: string;
+      alphaAddress?: string;
+      chainId: number;
+    },
+  ): void {
+    const { rpcUrl, privateKey, contractAddress, alphaAddress, chainId } = config;
+
+    if (!rpcUrl || !privateKey || !contractAddress || !alphaAddress) {
       this.logger.warn(
-        'Blockchain configuration incomplete (SETTLEMENT_RPC_URL / SETTLEMENT_PRIVATE_KEY / SETTLEMENT_CONTRACT_ADDRESS). ' +
-          'Settlement service running in no-op mode — transactions will not be submitted.',
+        `[${chainName}] Blockchain configuration incomplete — settlement running in no-op mode for this chain.`,
       );
       return;
     }
 
-    const resolvedChainId = chainIdStr ? parseInt(chainIdStr, 10) : 84532;
-    this.clients = this.createSettlementClient(rpcUrl, privateKey, resolvedChainId);
-    this.contractAddress = contractAddr as Address;
-    this.rpcUrl = rpcUrl;
-    this.chain = this.resolveChain(resolvedChainId);
+    const chain = this.resolveChain(chainId);
+    const account = privateKeyToAccount(privateKey as `0x${string}`);
 
-    // Resolve ALPHA address from config or chain ID
-    this.alphaAddress = (alphaAddr as Address) ?? ALPHA_BY_CHAIN[resolvedChainId] ?? null;
+    const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
+    const walletClient = createWalletClient({ chain, transport: http(rpcUrl), account });
 
-    if (!this.alphaAddress) {
-      this.logger.warn(
-        `No ALPHA address configured or known for chain ${resolvedChainId}. Escrow will fail.`,
-      );
-    }
+    this.chainClients.set(chainName, {
+      publicClient,
+      walletClient,
+      account,
+      contractAddress: contractAddress as Address,
+      alphaAddress: alphaAddress as Address,
+      rpcUrl,
+      chain,
+      chainName,
+    });
 
     this.logger.log(
-      `Settlement service started (ALPHA mode) — chain=${resolvedChainId}, contract=${contractAddr}, alpha=${this.alphaAddress}, account=${this.clients.account.address}`,
+      `[${chainName}] Settlement started — chainId=${chainId}, contract=${contractAddress}, alpha=${alphaAddress}, account=${account.address}`,
     );
   }
 
-  /**
-   * Tear down clients and release resources.
-   */
   private stop(): void {
-    this.clients = null;
-    this.contractAddress = null;
-    this.alphaAddress = null;
-    this.rpcUrl = null;
-    this.chain = null;
+    this.chainClients.clear();
     this.logger.log('Settlement service stopped');
   }
 
-  // ── Client creation ──────────────────────────────────────────────
-
-  /**
-   * Resolve a viem Chain definition by its numeric chain ID.
-   */
   private resolveChain(chainId: number): Chain {
     for (const value of Object.values(chains)) {
       if (
@@ -132,77 +123,44 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  /**
-   * Create a pair of viem clients (public + wallet) for on-chain settlement.
-   */
-  private createSettlementClient(
-    rpcUrl: string,
-    privateKey: string,
-    chainId: number,
-  ): SettlementClients {
-    const chain = this.resolveChain(chainId);
-    const account = privateKeyToAccount(privateKey as `0x${string}`);
-
-    const publicClient = createPublicClient({
-      chain,
-      transport: http(rpcUrl),
-    });
-
-    const walletClient = createWalletClient({
-      chain,
-      transport: http(rpcUrl),
-      account,
-    });
-
-    return { publicClient, walletClient, account };
+  private getClients(chainName: ChainName): ChainClients | null {
+    return this.chainClients.get(chainName) ?? null;
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────
-
-  private isReady(): boolean {
-    return this.clients !== null && this.contractAddress !== null && this.alphaAddress !== null;
+  private isReady(chainName: ChainName): boolean {
+    return this.chainClients.has(chainName);
   }
 
-  /**
-   * Convert an application-level match ID string into a bytes32 hex value
-   * suitable for the smart contract.  If the value is already a 0x-prefixed
-   * 66-char hex string it is returned as-is; otherwise it is right-padded
-   * with zeroes.
-   */
-  private toBytes32(matchId: string): `0x${string}` {
+  toBytes32(matchId: string): `0x${string}` {
     if (matchId.startsWith('0x') && matchId.length === 66) {
       return matchId as `0x${string}`;
     }
-    // Encode as UTF-8 bytes then pad to 32 bytes
     const hex = Buffer.from(matchId, 'utf8').toString('hex').slice(0, 64);
     return `0x${hex.padEnd(64, '0')}` as `0x${string}`;
   }
 
-  /**
-   * Ensure the Arena contract has sufficient ALPHA allowance from the operator.
-   * If current allowance is less than the required amount, sends an approve tx.
-   */
-  private async ensureAlphaAllowance(spender: Address, amount: bigint): Promise<void> {
-    const { publicClient, walletClient, account } = this.clients!;
+  private async ensureAlphaAllowance(
+    clients: ChainClients,
+    spender: Address,
+    amount: bigint,
+  ): Promise<void> {
+    const { publicClient, walletClient, account, alphaAddress } = clients;
 
     const currentAllowance = await publicClient.readContract({
-      address: this.alphaAddress!,
+      address: alphaAddress,
       abi: erc20Abi,
       functionName: 'allowance',
       args: [account.address, spender],
     });
 
-    if ((currentAllowance as bigint) >= amount) {
-      return;
-    }
+    if ((currentAllowance as bigint) >= amount) return;
 
-    // Approve max uint256 so we only need to do this once
     const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
 
-    this.logger.log(`Approving max ALPHA spend for Arena contract: spender=${spender}`);
+    this.logger.log(`[${clients.chainName}] Approving max ALPHA spend for contract: spender=${spender}`);
 
     const { request } = await publicClient.simulateContract({
-      address: this.alphaAddress!,
+      address: alphaAddress,
       abi: erc20Abi,
       functionName: 'approve',
       args: [spender, maxApproval],
@@ -212,43 +170,36 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
     const txHash = await walletClient.writeContract(request);
     await publicClient.waitForTransactionReceipt({ hash: txHash, confirmations: 2 });
 
-    this.logger.log(`ALPHA max approval confirmed: txHash=${txHash}`);
+    this.logger.log(`[${clients.chainName}] ALPHA max approval confirmed: txHash=${txHash}`);
   }
 
   // ── Public API ───────────────────────────────────────────────────
 
-  /**
-   * Lock escrow ALPHA for a match.
-   *
-   * Automatically approves ALPHA spending if the current allowance is insufficient.
-   * The transaction is submitted and then we wait for at least one confirmation.
-   *
-   * @returns The transaction hash, or `null` when running in no-op mode.
-   */
   async escrow(
     matchId: string,
     agentAAddress: string,
     agentBAddress: string,
     stakeAmount: bigint,
+    chainName: ChainName = 'base',
   ): Promise<string | null> {
-    if (!this.isReady()) {
-      this.logger.warn(`escrow skipped — settlement service not initialised (matchId=${matchId})`);
+    const clients = this.getClients(chainName);
+    if (!clients) {
+      this.logger.warn(`[${chainName}] escrow skipped — not initialised (matchId=${matchId})`);
       return null;
     }
 
-    const { publicClient, walletClient, account } = this.clients!;
+    const { publicClient, walletClient, account, contractAddress } = clients;
     const matchIdBytes32 = this.toBytes32(matchId);
 
     this.logger.log(
-      `Submitting escrowFunds transaction (ALPHA): matchId=${matchId}, agentA=${agentAAddress}, agentB=${agentBAddress}, stakeAmount=${stakeAmount.toString()}`,
+      `[${chainName}] Submitting escrowFunds: matchId=${matchId}, agentA=${agentAAddress}, agentB=${agentBAddress}, stake=${stakeAmount}`,
     );
 
     try {
-      // Ensure ALPHA approval before escrow
-      await this.ensureAlphaAllowance(this.contractAddress!, stakeAmount);
+      await this.ensureAlphaAllowance(clients, contractAddress, stakeAmount);
 
       const { request } = await publicClient.simulateContract({
-        address: this.contractAddress!,
+        address: contractAddress,
         abi: arenaAbi,
         functionName: 'escrowFunds',
         args: [matchIdBytes32, agentAAddress as Address, agentBAddress as Address, stakeAmount],
@@ -256,52 +207,40 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
       });
 
       const txHash = await walletClient.writeContract(request);
-
-      this.logger.log(`escrowFunds transaction sent, waiting for receipt: txHash=${txHash}, matchId=${matchId}`);
+      this.logger.log(`[${chainName}] escrowFunds sent: txHash=${txHash}, matchId=${matchId}`);
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status === 'reverted') throw new Error(`escrowFunds reverted: ${txHash}`);
 
-      if (receipt.status === 'reverted') {
-        throw new Error(`escrowFunds transaction reverted: ${txHash}`);
-      }
-
-      this.logger.log(
-        `escrowFunds confirmed: txHash=${txHash}, blockNumber=${receipt.blockNumber.toString()}, matchId=${matchId}`,
-      );
-
+      this.logger.log(`[${chainName}] escrowFunds confirmed: txHash=${txHash}, block=${receipt.blockNumber}`);
       return txHash;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to lock escrow: matchId=${matchId}, error=${message}`);
+      this.logger.error(`[${chainName}] Failed to lock escrow: matchId=${matchId}, error=${message}`);
       throw error;
     }
   }
 
-  /**
-   * Release escrowed ALPHA to the match winner.
-   *
-   * @returns The transaction hash, or `null` when running in no-op mode.
-   */
   async payout(
     matchId: string,
     winnerAddress: string,
     amount: bigint,
+    chainName: ChainName = 'base',
   ): Promise<string | null> {
-    if (!this.isReady()) {
-      this.logger.warn(`payout skipped — settlement service not initialised (matchId=${matchId})`);
+    const clients = this.getClients(chainName);
+    if (!clients) {
+      this.logger.warn(`[${chainName}] payout skipped — not initialised (matchId=${matchId})`);
       return null;
     }
 
-    const { publicClient, walletClient, account } = this.clients!;
+    const { publicClient, walletClient, account, contractAddress } = clients;
     const matchIdBytes32 = this.toBytes32(matchId);
 
-    this.logger.log(
-      `Submitting releasePayout transaction: matchId=${matchId}, winner=${winnerAddress}, amount=${amount.toString()}`,
-    );
+    this.logger.log(`[${chainName}] Submitting releasePayout: matchId=${matchId}, winner=${winnerAddress}, amount=${amount}`);
 
     try {
       const { request } = await publicClient.simulateContract({
-        address: this.contractAddress!,
+        address: contractAddress,
         abi: arenaAbi,
         functionName: 'releasePayout',
         args: [matchIdBytes32, winnerAddress as Address, amount],
@@ -309,46 +248,38 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
       });
 
       const txHash = await walletClient.writeContract(request);
-
-      this.logger.log(`releasePayout transaction sent, waiting for receipt: txHash=${txHash}, matchId=${matchId}`);
+      this.logger.log(`[${chainName}] releasePayout sent: txHash=${txHash}, matchId=${matchId}`);
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status === 'reverted') throw new Error(`releasePayout reverted: ${txHash}`);
 
-      if (receipt.status === 'reverted') {
-        throw new Error(`releasePayout transaction reverted: ${txHash}`);
-      }
-
-      this.logger.log(
-        `releasePayout confirmed: txHash=${txHash}, blockNumber=${receipt.blockNumber.toString()}, matchId=${matchId}`,
-      );
-
+      this.logger.log(`[${chainName}] releasePayout confirmed: txHash=${txHash}, block=${receipt.blockNumber}`);
       return txHash;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to release payout: matchId=${matchId}, error=${message}`);
+      this.logger.error(`[${chainName}] Failed to release payout: matchId=${matchId}, error=${message}`);
       throw error;
     }
   }
 
-  /**
-   * Refund both parties of a cancelled / errored match.
-   *
-   * @returns The transaction hash, or `null` when running in no-op mode.
-   */
-  async refund(matchId: string): Promise<string | null> {
-    if (!this.isReady()) {
-      this.logger.warn(`refund skipped — settlement service not initialised (matchId=${matchId})`);
+  async refund(
+    matchId: string,
+    chainName: ChainName = 'base',
+  ): Promise<string | null> {
+    const clients = this.getClients(chainName);
+    if (!clients) {
+      this.logger.warn(`[${chainName}] refund skipped — not initialised (matchId=${matchId})`);
       return null;
     }
 
-    const { publicClient, walletClient, account } = this.clients!;
+    const { publicClient, walletClient, account, contractAddress } = clients;
     const matchIdBytes32 = this.toBytes32(matchId);
 
-    this.logger.log(`Submitting refundMatch transaction: matchId=${matchId}`);
+    this.logger.log(`[${chainName}] Submitting refundMatch: matchId=${matchId}`);
 
     try {
       const { request } = await publicClient.simulateContract({
-        address: this.contractAddress!,
+        address: contractAddress,
         abi: arenaAbi,
         functionName: 'refundMatch',
         args: [matchIdBytes32],
@@ -356,38 +287,28 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
       });
 
       const txHash = await walletClient.writeContract(request);
-
-      this.logger.log(`refundMatch transaction sent, waiting for receipt: txHash=${txHash}, matchId=${matchId}`);
+      this.logger.log(`[${chainName}] refundMatch sent: txHash=${txHash}, matchId=${matchId}`);
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status === 'reverted') throw new Error(`refundMatch reverted: ${txHash}`);
 
-      if (receipt.status === 'reverted') {
-        throw new Error(`refundMatch transaction reverted: ${txHash}`);
-      }
-
-      this.logger.log(
-        `refundMatch confirmed: txHash=${txHash}, blockNumber=${receipt.blockNumber.toString()}, matchId=${matchId}`,
-      );
-
+      this.logger.log(`[${chainName}] refundMatch confirmed: txHash=${txHash}, block=${receipt.blockNumber}`);
       return txHash;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to refund match: matchId=${matchId}, error=${message}`);
+      this.logger.error(`[${chainName}] Failed to refund: matchId=${matchId}, error=${message}`);
       throw error;
     }
   }
 
   // ── Agent Wallet Operations ───────────────────────────────────────
 
-  /**
-   * Read on-chain ALPHA balance for an agent wallet.
-   * Returns the balance as a human-readable string (e.g. "100.5").
-   */
-  async getAgentAlphaBalance(walletAddress: string): Promise<string> {
-    if (!this.clients || !this.alphaAddress) return '0';
+  async getAgentAlphaBalance(walletAddress: string, chainName: ChainName = 'base'): Promise<string> {
+    const clients = this.getClients(chainName);
+    if (!clients) return '0';
 
-    const balance = await this.clients.publicClient.readContract({
-      address: this.alphaAddress,
+    const balance = await clients.publicClient.readContract({
+      address: clients.alphaAddress,
       abi: erc20Abi,
       functionName: 'balanceOf',
       args: [walletAddress as Address],
@@ -396,50 +317,43 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
     return formatUnits(balance as bigint, 18);
   }
 
-  /**
-   * Read on-chain ETH balance for an agent wallet (needed for gas).
-   * Returns the balance as a human-readable string (e.g. "0.001").
-   */
-  async getAgentEthBalance(walletAddress: string): Promise<string> {
-    if (!this.clients) return '0';
+  async getAgentEthBalance(walletAddress: string, chainName: ChainName = 'base'): Promise<string> {
+    const clients = this.getClients(chainName);
+    if (!clients) return '0';
 
-    const balance = await this.clients.publicClient.getBalance({
+    const balance = await clients.publicClient.getBalance({
       address: walletAddress as Address,
     });
 
     return formatEther(balance);
   }
 
-  /**
-   * Transfer ALPHA from an agent's wallet to a destination address.
-   * Creates a temporary wallet client with the agent's private key.
-   *
-   * @returns The transaction hash, or `null` when running in no-op mode.
-   */
   async transferAlphaFromAgent(
     agentPrivateKey: string,
     to: string,
     amount: bigint,
+    chainName: ChainName = 'base',
   ): Promise<string | null> {
-    if (!this.clients || !this.alphaAddress) {
-      this.logger.warn('transferAlphaFromAgent skipped — settlement service not initialised');
+    const clients = this.getClients(chainName);
+    if (!clients) {
+      this.logger.warn(`[${chainName}] transferAlphaFromAgent skipped — not initialised`);
       return null;
     }
 
-    const { publicClient } = this.clients;
+    const { publicClient, alphaAddress, chain, rpcUrl } = clients;
     const agentAccount = privateKeyToAccount(agentPrivateKey as `0x${string}`);
     const agentWalletClient = createWalletClient({
-      chain: this.chain!,
-      transport: http(this.rpcUrl!),
+      chain,
+      transport: http(rpcUrl),
       account: agentAccount,
     });
 
     this.logger.log(
-      `Transferring ALPHA from agent ${agentAccount.address} to ${to}, amount=${amount.toString()}`,
+      `[${chainName}] Transferring ALPHA from ${agentAccount.address} to ${to}, amount=${amount}`,
     );
 
     const { request } = await publicClient.simulateContract({
-      address: this.alphaAddress,
+      address: alphaAddress,
       abi: erc20Abi,
       functionName: 'transfer',
       args: [to as Address, amount],
@@ -449,14 +363,191 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
     const txHash = await agentWalletClient.writeContract(request);
     await publicClient.waitForTransactionReceipt({ hash: txHash });
 
-    this.logger.log(`ALPHA transfer confirmed: txHash=${txHash}`);
+    this.logger.log(`[${chainName}] ALPHA transfer confirmed: txHash=${txHash}`);
     return txHash;
   }
 
-  /**
-   * Get the platform wallet address (the operator account).
-   */
-  getPlatformWalletAddress(): string | null {
-    return this.clients?.account.address ?? null;
+  getPlatformWalletAddress(chainName: ChainName = 'base'): string | null {
+    return this.getClients(chainName)?.account.address ?? null;
+  }
+
+  getConfiguredChains(): ChainName[] {
+    return [...this.chainClients.keys()];
+  }
+
+  // ── Betting Views ───────────────────────────────────────────────────
+
+  async getMatchOnChainState(matchId: string, chainName: ChainName = 'base'): Promise<number | null> {
+    const clients = this.getClients(chainName);
+    if (!clients) return null;
+
+    const result = await clients.publicClient.readContract({
+      address: clients.contractAddress,
+      abi: arenaAbi,
+      functionName: 'getMatchState',
+      args: [this.toBytes32(matchId)],
+    });
+    return Number(result);
+  }
+
+  async getMatchInfo(matchId: string, chainName: ChainName = 'base'): Promise<{
+    agentA: string; agentB: string; amount: string; state: number;
+  } | null> {
+    const clients = this.getClients(chainName);
+    if (!clients) return null;
+
+    const result = await clients.publicClient.readContract({
+      address: clients.contractAddress,
+      abi: arenaAbi,
+      functionName: 'getMatchInfo',
+      args: [this.toBytes32(matchId)],
+    }) as [string, string, bigint, number];
+
+    return {
+      agentA: result[0],
+      agentB: result[1],
+      amount: formatUnits(result[2], 18),
+      state: Number(result[3]),
+    };
+  }
+
+  async getBettingPool(matchId: string, chainName: ChainName = 'base'): Promise<{
+    totalBetsA: string; totalBetsB: string; netPool: string; noContest: boolean;
+  } | null> {
+    const clients = this.getClients(chainName);
+    if (!clients) return null;
+
+    const result = await clients.publicClient.readContract({
+      address: clients.contractAddress,
+      abi: arenaAbi,
+      functionName: 'getBettingPool',
+      args: [this.toBytes32(matchId)],
+    }) as [bigint, bigint, bigint, boolean];
+
+    return {
+      totalBetsA: formatUnits(result[0], 18),
+      totalBetsB: formatUnits(result[1], 18),
+      netPool: formatUnits(result[2], 18),
+      noContest: result[3],
+    };
+  }
+
+  async getUserBets(matchId: string, userAddress: string, chainName: ChainName = 'base'): Promise<{
+    betOnA: string; betOnB: string; claimed: boolean;
+  } | null> {
+    const clients = this.getClients(chainName);
+    if (!clients) return null;
+
+    const result = await clients.publicClient.readContract({
+      address: clients.contractAddress,
+      abi: arenaAbi,
+      functionName: 'getUserBets',
+      args: [this.toBytes32(matchId), userAddress as Address],
+    }) as [bigint, bigint, boolean];
+
+    return {
+      betOnA: formatUnits(result[0], 18),
+      betOnB: formatUnits(result[1], 18),
+      claimed: result[2],
+    };
+  }
+
+  async placeBet(
+    matchId: string,
+    userPrivateKey: string,
+    onAgentA: boolean,
+    amount: bigint,
+    chainName: ChainName = 'base',
+  ): Promise<string | null> {
+    const clients = this.getClients(chainName);
+    if (!clients) {
+      this.logger.warn(`[${chainName}] placeBet skipped — not initialised (matchId=${matchId})`);
+      return null;
+    }
+
+    const { publicClient, contractAddress, alphaAddress, chain, rpcUrl } = clients;
+    const userAccount = privateKeyToAccount(userPrivateKey as `0x${string}`);
+    const userWalletClient = createWalletClient({ chain, transport: http(rpcUrl), account: userAccount });
+
+    // Approve ALPHA spend
+    const currentAllowance = await publicClient.readContract({
+      address: alphaAddress,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [userAccount.address, contractAddress],
+    });
+
+    if ((currentAllowance as bigint) < amount) {
+      const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+      const { request: approveReq } = await publicClient.simulateContract({
+        address: alphaAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [contractAddress, maxApproval],
+        account: userAccount,
+      });
+      const approveTx = await userWalletClient.writeContract(approveReq);
+      await publicClient.waitForTransactionReceipt({ hash: approveTx });
+    }
+
+    const matchIdBytes32 = this.toBytes32(matchId);
+
+    this.logger.log(`[${chainName}] placeBet: matchId=${matchId}, user=${userAccount.address}, onAgentA=${onAgentA}, amount=${amount}`);
+
+    const { request } = await publicClient.simulateContract({
+      address: contractAddress,
+      abi: arenaAbi,
+      functionName: 'placeBet',
+      args: [matchIdBytes32, onAgentA, amount],
+      account: userAccount,
+    });
+
+    const txHash = await userWalletClient.writeContract(request);
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    this.logger.log(`[${chainName}] placeBet confirmed: txHash=${txHash}`);
+    return txHash;
+  }
+
+  async claimBet(
+    matchId: string,
+    userPrivateKey: string,
+    chainName: ChainName = 'base',
+  ): Promise<string | null> {
+    const clients = this.getClients(chainName);
+    if (!clients) {
+      this.logger.warn(`[${chainName}] claimBet skipped — not initialised (matchId=${matchId})`);
+      return null;
+    }
+
+    const { publicClient, contractAddress, chain, rpcUrl } = clients;
+    const userAccount = privateKeyToAccount(userPrivateKey as `0x${string}`);
+    const userWalletClient = createWalletClient({ chain, transport: http(rpcUrl), account: userAccount });
+
+    const matchIdBytes32 = this.toBytes32(matchId);
+
+    this.logger.log(`[${chainName}] claimBet: matchId=${matchId}, user=${userAccount.address}`);
+
+    const { request } = await publicClient.simulateContract({
+      address: contractAddress,
+      abi: arenaAbi,
+      functionName: 'claimBet',
+      args: [matchIdBytes32],
+      account: userAccount,
+    });
+
+    const txHash = await userWalletClient.writeContract(request);
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    this.logger.log(`[${chainName}] claimBet confirmed: txHash=${txHash}`);
+    return txHash;
+  }
+
+  getContractAddress(chainName: ChainName = 'base'): string | null {
+    return this.getClients(chainName)?.contractAddress ?? null;
+  }
+
+  getAlphaAddress(chainName: ChainName = 'base'): string | null {
+    return this.getClients(chainName)?.alphaAddress ?? null;
   }
 }

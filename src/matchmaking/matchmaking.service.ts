@@ -13,7 +13,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MatchmakingService.name);
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private processing = false;
-  private onPairedCallback: ((agentA: string, agentB: string, stakeAmount: number, gameType: string) => Promise<string>) | null = null;
+  private onPairedCallback: ((agentA: string, agentB: string, stakeAmount: number, gameType: string, chain: string) => Promise<string>) | null = null;
   private readonly countdowns = new Map<string, { startedAt: number }>();
 
   constructor(
@@ -26,7 +26,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     await this.queue.loadFromDatabase();
 
-    this.setOnPairedCallback(async (agentAId, agentBId, stakeAmount, gameType) => {
+    this.setOnPairedCallback(async (agentAId, agentBId, stakeAmount, gameType, chain) => {
       const [agentA, agentB] = await Promise.all([
         this.agentModel.findById(agentAId),
         this.agentModel.findById(agentBId),
@@ -58,6 +58,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         },
         stakeAmount,
         gameType,
+        chain,
       );
     });
 
@@ -74,12 +75,12 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Matchmaking service stopped');
   }
 
-  setOnPairedCallback(cb: (agentA: string, agentB: string, stakeAmount: number, gameType: string) => Promise<string>) {
+  setOnPairedCallback(cb: (agentA: string, agentB: string, stakeAmount: number, gameType: string, chain: string) => Promise<string>) {
     this.onPairedCallback = cb;
   }
 
-  async joinQueue(agentId: string, userId: string, eloRating: number, stakeAmount: number, gameType: string, agentType?: string): Promise<void> {
-    const entry: QueueEntryData = { agentId, userId, eloRating, stakeAmount, gameType, status: 'waiting', joinedAt: new Date(), agentType };
+  async joinQueue(agentId: string, userId: string, eloRating: number, stakeAmount: number, gameType: string, agentType?: string, chain: string = 'base'): Promise<void> {
+    const entry: QueueEntryData = { agentId, userId, eloRating, stakeAmount, gameType, chain, status: 'waiting', joinedAt: new Date(), agentType };
     await this.queue.add(entry);
     this.logger.log(`Agent ${agentId} joined matchmaking queue`);
   }
@@ -170,7 +171,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
             await this.queue.setStatus(entryA.agentId, 'pairing');
             await this.queue.setStatus(entryB.agentId, 'pairing');
             const stakeAmount = Math.min(entryA.stakeAmount, entryB.stakeAmount);
-            const matchId = await this.onPairedCallback(entryA.agentId, entryB.agentId, stakeAmount, gameType);
+            const matchId = await this.onPairedCallback(entryA.agentId, entryB.agentId, stakeAmount, gameType, entryA.chain);
             this.eventBus.emit('matchmaking:matched', {
               matchId,
               gameType,

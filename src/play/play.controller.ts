@@ -1,5 +1,5 @@
-import { Controller, Post, Get, Body, UseGuards, HttpCode } from '@nestjs/common';
-import { IsString, IsNumber, Min, Max, IsIn } from 'class-validator';
+import { Controller, Post, Get, Body, Query, UseGuards, HttpCode } from '@nestjs/common';
+import { IsString, IsNumber, Min, Max, IsIn, IsOptional } from 'class-validator';
 import { PlayService } from './play.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -14,6 +14,10 @@ class JoinDto {
   @Min(MIN_STAKE)
   @Max(MAX_STAKE)
   stakeAmount: number;
+
+  @IsOptional()
+  @IsIn(['base', 'celo'])
+  chain?: string;
 }
 
 class MoveDto {
@@ -31,7 +35,7 @@ export class PlayController {
   @Post('join')
   @HttpCode(201)
   async join(@CurrentUser() user: AuthPayload, @Body() dto: JoinDto) {
-    return this.playService.joinQueue(user.userId, dto.gameType, dto.stakeAmount);
+    return this.playService.joinQueue(user.userId, dto.gameType, dto.stakeAmount, dto.chain || 'base');
   }
 
   @Post('cancel')
@@ -45,8 +49,9 @@ export class PlayController {
   }
 
   @Get('balance')
-  async balance(@CurrentUser() user: AuthPayload) {
-    return this.playService.getBalance(user.userId);
+  async balance(@CurrentUser() user: AuthPayload, @Query('chain') chain?: string) {
+    const validChain = chain === 'celo' ? 'celo' : 'base';
+    return this.playService.getBalance(user.userId, validChain);
   }
 
   @Post('move')

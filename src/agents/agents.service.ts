@@ -36,6 +36,7 @@ export class AgentsService {
       userId,
       name: dto.name,
       type: agentType,
+      chain: dto.chain || 'base',
       gameTypes: dto.gameTypes || ['chess'],
       eloRating: DEFAULT_ELO,
       status: 'idle',

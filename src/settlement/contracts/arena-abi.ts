@@ -56,6 +56,87 @@ export const arenaAbi = [
     outputs: [{ name: "", type: "uint256" }],
   },
 
+  // ── Betting views ─────────────────────────────────────────────────
+
+  {
+    type: "function",
+    name: "getMatchState",
+    stateMutability: "view",
+    inputs: [{ name: "matchId", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+
+  {
+    type: "function",
+    name: "getMatchInfo",
+    stateMutability: "view",
+    inputs: [{ name: "matchId", type: "bytes32" }],
+    outputs: [
+      { name: "agentA", type: "address" },
+      { name: "agentB", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "state", type: "uint8" },
+    ],
+  },
+
+  {
+    type: "function",
+    name: "getBettingPool",
+    stateMutability: "view",
+    inputs: [{ name: "matchId", type: "bytes32" }],
+    outputs: [
+      { name: "totalBetsA", type: "uint256" },
+      { name: "totalBetsB", type: "uint256" },
+      { name: "netPool", type: "uint256" },
+      { name: "noContest", type: "bool" },
+    ],
+  },
+
+  {
+    type: "function",
+    name: "getUserBets",
+    stateMutability: "view",
+    inputs: [
+      { name: "matchId", type: "bytes32" },
+      { name: "user", type: "address" },
+    ],
+    outputs: [
+      { name: "betOnA", type: "uint256" },
+      { name: "betOnB", type: "uint256" },
+      { name: "claimed", type: "bool" },
+    ],
+  },
+
+  {
+    type: "function",
+    name: "accumulatedFees",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+
+  // ── Betting (user-facing) ──────────────────────────────────────────
+
+  {
+    type: "function",
+    name: "placeBet",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "matchId", type: "bytes32" },
+      { name: "onAgentA", type: "bool" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+
+  {
+    type: "function",
+    name: "claimBet",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "matchId", type: "bytes32" }],
+    outputs: [],
+  },
+
   // ── Events ─────────────────────────────────────────────────────────
 
   {

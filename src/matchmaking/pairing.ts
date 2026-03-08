@@ -23,6 +23,7 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       const entryB = sorted[j];
       if (paired.has(entryB.agentId)) continue;
       if (entryA.gameType !== entryB.gameType) continue;
+      if (entryA.chain !== entryB.chain) continue;
       if (process.env.NODE_ENV !== 'development' && entryA.userId === entryB.userId) {
         // Allow same-user pairing when one side is a human player
         const hasHuman = entryA.agentType === 'human' || entryB.agentType === 'human';

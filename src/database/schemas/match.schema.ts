@@ -47,6 +47,9 @@ export class Match extends Document {
   @Prop({ required: true })
   gameType: string;
 
+  @Prop({ type: String, enum: ['base', 'celo'], default: 'base' })
+  chain: string;
+
   @Prop({
     type: {
       a: { type: MatchAgentSubDocSchema, required: true },

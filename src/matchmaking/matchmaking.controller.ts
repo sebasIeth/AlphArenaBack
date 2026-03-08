@@ -41,9 +41,10 @@ export class MatchmakingController {
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet. Please recreate the agent.');
 
     // Verify agent wallet has sufficient on-chain balance
+    const agentChain = (agent.chain || 'base') as any;
     const [alphaBalance, ethBalance] = await Promise.all([
-      this.settlement.getAgentAlphaBalance(agent.walletAddress),
-      this.settlement.getAgentEthBalance(agent.walletAddress),
+      this.settlement.getAgentAlphaBalance(agent.walletAddress, agentChain),
+      this.settlement.getAgentEthBalance(agent.walletAddress, agentChain),
     ]);
 
     if (parseFloat(alphaBalance) < dto.stakeAmount) {
@@ -62,7 +63,7 @@ export class MatchmakingController {
     await agent.save();
 
     try {
-      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type);
+      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type, agentChain);
       return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: dto.gameType, stakeAmount: dto.stakeAmount };
     } catch (err) {
       agent.status = 'idle';

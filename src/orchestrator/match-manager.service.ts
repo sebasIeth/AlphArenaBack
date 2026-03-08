@@ -9,6 +9,7 @@ import {
 import {
   MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, TOKEN_DECIMALS,
   POKER_SMALL_BLIND, POKER_BIG_BLIND,
+  type ChainName,
 } from '../common/constants/game.constants';
 import { Match, Agent } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
@@ -67,24 +68,25 @@ export class MatchManagerService {
     agentB: MatchAgentInput,
     stakeAmount: number,
     gameType: string = 'chess',
+    chain: string = 'base',
   ): Promise<string> {
-    this.logger.log(`Creating match: ${agentA.agentId} vs ${agentB.agentId}, gameType=${gameType}`);
+    this.logger.log(`Creating match: ${agentA.agentId} vs ${agentB.agentId}, gameType=${gameType}, chain=${chain}`);
 
     const potAmount = stakeAmount * 2;
 
     if (gameType === 'marrakech') {
-      return this.createMarrakechMatch(agentA, agentB, stakeAmount, potAmount);
+      return this.createMarrakechMatch(agentA, agentB, stakeAmount, potAmount, chain);
     }
 
     if (gameType === 'chess') {
-      return this.createChessMatch(agentA, agentB, stakeAmount, potAmount);
+      return this.createChessMatch(agentA, agentB, stakeAmount, potAmount, chain);
     }
 
     if (gameType === 'poker') {
-      return this.createPokerMatch(agentA, agentB, stakeAmount, potAmount);
+      return this.createPokerMatch(agentA, agentB, stakeAmount, potAmount, chain);
     }
 
-    return this.createReversiMatch(agentA, agentB, stakeAmount, potAmount, gameType);
+    return this.createReversiMatch(agentA, agentB, stakeAmount, potAmount, gameType, chain);
   }
 
   private async createReversiMatch(
@@ -93,12 +95,13 @@ export class MatchManagerService {
     stakeAmount: number,
     potAmount: number,
     gameType: string,
+    chain: string = 'base',
   ): Promise<string> {
     const initialState = this.gameEngine.createInitialState();
     const initialBoard = initialState.board;
 
     const matchDoc = await this.matchModel.create({
-      gameType,
+      gameType, chain,
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -146,6 +149,7 @@ export class MatchManagerService {
     agentB: MatchAgentInput,
     stakeAmount: number,
     potAmount: number,
+    chain: string = 'base',
   ): Promise<string> {
     const marrakech = this.gameEngine.getMarrakechEngine();
     const mkState = marrakech.createInitialState(2, [agentA.name, agentB.name]);
@@ -155,7 +159,7 @@ export class MatchManagerService {
     ) as Board;
 
     const matchDoc = await this.matchModel.create({
-      gameType: 'marrakech',
+      gameType: 'marrakech', chain,
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -210,12 +214,13 @@ export class MatchManagerService {
     agentB: MatchAgentInput,
     stakeAmount: number,
     potAmount: number,
+    chain: string = 'base',
   ): Promise<string> {
     const chessEngine = this.gameEngine.createChessEngine();
     const initialBoard = chessEngine.getBoard();
 
     const matchDoc = await this.matchModel.create({
-      gameType: 'chess',
+      gameType: 'chess', chain,
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -273,13 +278,14 @@ export class MatchManagerService {
     agentB: MatchAgentInput,
     stakeAmount: number,
     potAmount: number,
+    chain: string = 'base',
   ): Promise<string> {
     // Starting stack = 100 big blinds
     const startingStack = POKER_BIG_BLIND * 100;
     const pokerState = createPokerInitialState(startingStack, POKER_SMALL_BLIND, POKER_BIG_BLIND);
 
     const matchDoc = await this.matchModel.create({
-      gameType: 'poker',
+      gameType: 'poker', chain,
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -381,7 +387,8 @@ export class MatchManagerService {
     if (matchDoc.stakeAmount > 0) {
       const stakeAmountAlpha = BigInt(matchDoc.stakeAmount) * BigInt(10 ** TOKEN_DECIMALS);
       const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
-      const platformWallet = this.settlement.getPlatformWalletAddress();
+      const matchChain = (matchDoc.chain || 'base') as ChainName;
+      const platformWallet = this.settlement.getPlatformWalletAddress(matchChain);
 
       if (!platformWallet) {
         this.logger.error(`Platform wallet not available for match ${matchId}`);
@@ -405,11 +412,11 @@ export class MatchManagerService {
           throw new Error('Missing agent wallet private key');
         }
 
-        await this.settlement.transferAlphaFromAgent(privKeyA, platformWallet, stakeAmountAlpha);
-        await this.settlement.transferAlphaFromAgent(privKeyB, platformWallet, stakeAmountAlpha);
+        await this.settlement.transferAlphaFromAgent(privKeyA, platformWallet, stakeAmountAlpha, matchChain);
+        await this.settlement.transferAlphaFromAgent(privKeyB, platformWallet, stakeAmountAlpha, matchChain);
 
         const escrowTxHash = await this.settlement.escrow(
-          matchId, walletA, walletB, escrowAmount,
+          matchId, walletA, walletB, escrowAmount, matchChain,
         );
         await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': escrowTxHash });
       } catch (error: unknown) {
@@ -759,8 +766,10 @@ export class MatchManagerService {
     this.eventBus.emit('match:error', { matchId, agentIds, error: errorMessage });
 
     try {
+      const errorMatchDoc = await this.matchModel.findById(matchId);
+      const errorChain = ((errorMatchDoc?.chain) || 'base') as ChainName;
       await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
-      try { await this.settlement.refund(matchId); } catch {}
+      try { await this.settlement.refund(matchId, errorChain); } catch {}
       if (matchState) {
         await Promise.all([
           this.agentModel.updateOne({ _id: matchState.agents.a.agentId }, { status: 'idle' }),
@@ -789,7 +798,7 @@ export class MatchManagerService {
         this.agentModel.updateOne({ _id: match.agents.a.agentId, status: 'in_match' }, { status: 'idle' }),
         this.agentModel.updateOne({ _id: match.agents.b.agentId, status: 'in_match' }, { status: 'idle' }),
       ]);
-      try { await this.settlement.refund(matchId); } catch {}
+      try { await this.settlement.refund(matchId, (match.chain || 'base') as ChainName); } catch {}
     }
 
     // 2. Recover matches with 'active' status
@@ -810,7 +819,7 @@ export class MatchManagerService {
         if (!agentDocA || !agentDocB) {
           this.logger.error(`Cannot recover match ${matchId}: agent doc(s) missing`);
           await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
-          try { await this.settlement.refund(matchId); } catch {}
+          try { await this.settlement.refund(matchId, (match.chain || 'base') as ChainName); } catch {}
           await Promise.all([
             this.agentModel.updateOne({ _id: match.agents.a.agentId }, { status: 'idle' }),
             this.agentModel.updateOne({ _id: match.agents.b.agentId }, { status: 'idle' }),
@@ -1030,7 +1039,7 @@ export class MatchManagerService {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`Failed to recover match ${matchId}: ${message}`);
         await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
-        try { await this.settlement.refund(matchId); } catch {}
+        try { await this.settlement.refund(matchId, (match.chain || 'base') as ChainName); } catch {}
         await Promise.all([
           this.agentModel.updateOne({ _id: match.agents.a.agentId }, { status: 'idle' }),
           this.agentModel.updateOne({ _id: match.agents.b.agentId }, { status: 'idle' }),
