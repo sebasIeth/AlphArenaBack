@@ -11,7 +11,8 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
 import { type ChainName, TOKEN_DECIMALS } from '../common/constants/game.constants';
-import { decrypt } from '../common/crypto.util';
+import { decrypt, encrypt } from '../common/crypto.util';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
 class PlaceBetDto {
   @IsString()
@@ -37,6 +38,25 @@ export class BettingController {
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
+
+  private async getUserWallet(userId: string): Promise<{ walletAddress: string; privateKey: string }> {
+    const userDoc = await this.userModel.findById(userId).select('+walletPrivateKey');
+    if (!userDoc) throw new NotFoundException('User not found');
+
+    // If user doesn't have a wallet yet, generate one
+    if (!userDoc.walletAddress || !userDoc.walletPrivateKey) {
+      const privKey = generatePrivateKey();
+      const account = privateKeyToAccount(privKey);
+      userDoc.walletAddress = account.address;
+      userDoc.walletPrivateKey = privKey;
+      await userDoc.save();
+    }
+
+    return {
+      walletAddress: userDoc.walletAddress,
+      privateKey: decrypt(userDoc.walletPrivateKey),
+    };
+  }
 
   // ── Public read endpoints ─────────────────────────────────────────
 
@@ -140,17 +160,12 @@ export class BettingController {
       throw new BadRequestException(`Cannot bet on a match with status "${(match as any).status}". Match must be active.`);
     }
 
-    const userDoc = await this.userModel.findById(user.userId).select('+walletPrivateKey');
-    if (!userDoc?.walletAddress || !userDoc?.walletPrivateKey) {
-      throw new BadRequestException('Your account does not have a wallet.');
-    }
-
+    const { privateKey } = await this.getUserWallet(user.userId);
     const chain = ((match as any).chain || 'base') as ChainName;
     const amountAlpha = BigInt(Math.round(dto.amount * 10 ** TOKEN_DECIMALS));
-    const privKey = decrypt(userDoc.walletPrivateKey);
 
     try {
-      const txHash = await this.settlement.placeBet(dto.matchId, privKey, dto.onAgentA, amountAlpha, chain);
+      const txHash = await this.settlement.placeBet(dto.matchId, privateKey, dto.onAgentA, amountAlpha, chain);
       return {
         txHash,
         matchId: dto.matchId,
@@ -178,16 +193,11 @@ export class BettingController {
       throw new BadRequestException(`Cannot claim on a match with status "${(match as any).status}". Match must be completed.`);
     }
 
-    const userDoc = await this.userModel.findById(user.userId).select('+walletPrivateKey');
-    if (!userDoc?.walletAddress || !userDoc?.walletPrivateKey) {
-      throw new BadRequestException('Your account does not have a wallet.');
-    }
-
+    const { privateKey } = await this.getUserWallet(user.userId);
     const chain = ((match as any).chain || 'base') as ChainName;
-    const privKey = decrypt(userDoc.walletPrivateKey);
 
     try {
-      const txHash = await this.settlement.claimBet(dto.matchId, privKey, chain);
+      const txHash = await this.settlement.claimBet(dto.matchId, privateKey, chain);
       return {
         txHash,
         matchId: dto.matchId,
@@ -209,13 +219,9 @@ export class BettingController {
     const match = await this.matchModel.findById(matchId).select('chain').lean();
     if (!match) throw new NotFoundException('Match not found');
 
-    const userDoc = await this.userModel.findById(user.userId);
-    if (!userDoc?.walletAddress) {
-      throw new BadRequestException('Your account does not have a wallet.');
-    }
-
+    const { walletAddress } = await this.getUserWallet(user.userId);
     const chain = ((match as any).chain || 'base') as ChainName;
-    const bets = await this.settlement.getUserBets(matchId, userDoc.walletAddress, chain);
+    const bets = await this.settlement.getUserBets(matchId, walletAddress, chain);
 
     return { matchId, chain, bets };
   }
