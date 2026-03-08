@@ -45,6 +45,8 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       // Poker-specific
       if (data.pokerPlayerStacks) payload.pokerPlayerStacks = data.pokerPlayerStacks;
       if (data.pokerHandNumber != null) payload.pokerHandNumber = data.pokerHandNumber;
+      // Poker N-player
+      if (data.pokerPlayers) payload.pokerPlayers = data.pokerPlayers;
       this.rooms.broadcast(data.matchId, { type: 'match:start', data: payload });
     };
 
@@ -76,6 +78,9 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.pokerCommunityCards) payload.pokerCommunityCards = data.pokerCommunityCards;
       if (data.pokerPlayerStacks) payload.pokerPlayerStacks = data.pokerPlayerStacks;
       if (data.pokerHandNumber != null) payload.pokerHandNumber = data.pokerHandNumber;
+      // Poker N-player
+      if (data.pokerPlayers) payload.pokerPlayers = data.pokerPlayers;
+      if (data.pokerPlayerIndex != null) payload.pokerPlayerIndex = data.pokerPlayerIndex;
       this.rooms.broadcast(data.matchId, { type: 'match:move', data: payload });
     };
 
@@ -162,6 +167,10 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.pokerHandNumber != null) ytPayload.pokerHandNumber = data.pokerHandNumber;
       if (data.pokerIsDealer != null) ytPayload.pokerIsDealer = data.pokerIsDealer;
       if (data.pokerActionHistory) ytPayload.pokerActionHistory = data.pokerActionHistory;
+      // Poker N-player
+      if (data.pokerPlayers) ytPayload.pokerPlayers = data.pokerPlayers;
+      if (data.pokerSeatIndex != null) ytPayload.pokerSeatIndex = data.pokerSeatIndex;
+      if (data.pokerCurrentPlayerIndex != null) ytPayload.pokerCurrentPlayerIndex = data.pokerCurrentPlayerIndex;
       this.rooms.broadcast(data.matchId, { type: 'match:your_turn', data: ytPayload });
     };
 
