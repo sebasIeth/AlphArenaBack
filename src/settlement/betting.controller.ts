@@ -160,9 +160,17 @@ export class BettingController {
       throw new BadRequestException(`Cannot bet on a match with status "${(match as any).status}". Match must be active.`);
     }
 
-    const { privateKey } = await this.getUserWallet(user.userId);
+    const { walletAddress, privateKey } = await this.getUserWallet(user.userId);
     const chain = ((match as any).chain || 'base') as ChainName;
-    const amountAlpha = BigInt(Math.round(dto.amount * 10 ** TOKEN_DECIMALS));
+    const amountAlpha = BigInt(dto.amount) * BigInt(10 ** TOKEN_DECIMALS);
+
+    // Check balance before attempting on-chain tx
+    const balance = await this.settlement.getAgentAlphaBalance(walletAddress, chain);
+    if (parseFloat(balance) < dto.amount) {
+      throw new BadRequestException(
+        `Insufficient ALPHA balance to bet. You have ${balance} ALPHA but tried to bet ${dto.amount}. Deposit ALPHA to ${walletAddress} on ${chain}.`,
+      );
+    }
 
     try {
       const txHash = await this.settlement.placeBet(dto.matchId, privateKey, dto.onAgentA, amountAlpha, chain);
