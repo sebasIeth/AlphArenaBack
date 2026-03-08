@@ -11,7 +11,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
 import { type ChainName, TOKEN_DECIMALS } from '../common/constants/game.constants';
-import { decrypt, encrypt } from '../common/crypto.util';
+import { decrypt } from '../common/crypto.util';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
 class PlaceBetDto {
@@ -31,6 +31,13 @@ class ClaimBetDto {
   matchId: string;
 }
 
+const MATCH_STATE_LABELS: Record<number, string> = {
+  0: 'none',
+  1: 'escrowed',
+  2: 'settled',
+  3: 'refunded',
+};
+
 @Controller('betting')
 export class BettingController {
   constructor(
@@ -43,7 +50,6 @@ export class BettingController {
     const userDoc = await this.userModel.findById(userId).select('+walletPrivateKey');
     if (!userDoc) throw new NotFoundException('User not found');
 
-    // If user doesn't have a wallet yet, generate one
     if (!userDoc.walletAddress || !userDoc.walletPrivateKey) {
       const privKey = generatePrivateKey();
       const account = privateKeyToAccount(privKey);
@@ -77,28 +83,83 @@ export class BettingController {
 
   /**
    * GET /betting/:matchId/info
+   * Full betting dashboard data for a match.
    */
   @Get(':matchId/info')
   async getInfo(@Param('matchId') matchId: string) {
-    const match = await this.matchModel.findById(matchId).select('chain agents gameType status').lean();
+    const match = await this.matchModel.findById(matchId)
+      .select('chain agents gameType status stakeAmount potAmount result')
+      .lean();
     if (!match) throw new NotFoundException('Match not found');
 
-    const chain = ((match as any).chain || 'base') as ChainName;
+    const m = match as any;
+    const chain = (m.chain || 'base') as ChainName;
 
     const [matchInfo, pool] = await Promise.all([
       this.settlement.getMatchInfo(matchId, chain),
       this.settlement.getBettingPool(matchId, chain),
     ]);
 
+    const onChainState = matchInfo ? Number(matchInfo.state) : 0;
+    const bettingOpen = onChainState === 1 && m.status === 'active';
+
+    // Pool calculations
+    const totalA = parseFloat(pool?.totalBetsA || '0');
+    const totalB = parseFloat(pool?.totalBetsB || '0');
+    const totalPool = totalA + totalB;
+    const pctA = totalPool > 0 ? Math.round((totalA / totalPool) * 10000) / 100 : 50;
+    const pctB = totalPool > 0 ? Math.round((totalB / totalPool) * 10000) / 100 : 50;
+
+    // Potential payout multipliers (what you'd get per 1 ALPHA bet, after 5% fee)
+    const netMultiplier = 0.95; // 5% fee
+    const oddsA = totalA > 0 ? (totalPool * netMultiplier) / totalA : 0;
+    const oddsB = totalB > 0 ? (totalPool * netMultiplier) / totalB : 0;
+
+    // Winner info (if match is completed)
+    let winner: { side: string; agentName: string; agentId: string } | null = null;
+    if (m.status === 'completed' && m.result?.winnerId) {
+      const winningSide = m.result.winnerId === m.agents.a.agentId ? 'a' : 'b';
+      winner = {
+        side: winningSide,
+        agentName: m.agents[winningSide].name,
+        agentId: m.result.winnerId,
+      };
+    }
+
     return {
       matchId,
       matchIdBytes32: this.settlement.toBytes32(matchId),
       chain,
-      agents: (match as any).agents,
-      gameType: (match as any).gameType,
-      status: (match as any).status,
-      onChain: matchInfo,
-      pool,
+      gameType: m.gameType,
+      status: m.status,
+      stakeAmount: m.stakeAmount,
+
+      agents: {
+        a: { agentId: m.agents.a.agentId, name: m.agents.a.name, eloAtStart: m.agents.a.eloAtStart },
+        b: { agentId: m.agents.b.agentId, name: m.agents.b.name, eloAtStart: m.agents.b.eloAtStart },
+      },
+
+      betting: {
+        open: bettingOpen,
+        onChainState: MATCH_STATE_LABELS[onChainState] || 'unknown',
+        pool: {
+          totalBetsA: pool?.totalBetsA || '0',
+          totalBetsB: pool?.totalBetsB || '0',
+          totalPool: totalPool.toString(),
+          netPool: pool?.netPool || '0',
+          noContest: pool?.noContest || false,
+          percentA: pctA,
+          percentB: pctB,
+        },
+        odds: {
+          a: Math.round(oddsA * 100) / 100,
+          b: Math.round(oddsB * 100) / 100,
+        },
+        feePercent: 5,
+      },
+
+      winner,
+
       contracts: {
         arena: this.settlement.getContractAddress(chain),
         alpha: this.settlement.getAlphaAddress(chain),
@@ -108,20 +169,36 @@ export class BettingController {
 
   /**
    * GET /betting/:matchId/pool
+   * Lightweight pool data for polling.
    */
   @Get(':matchId/pool')
   async getPool(@Param('matchId') matchId: string) {
-    const match = await this.matchModel.findById(matchId).select('chain').lean();
+    const match = await this.matchModel.findById(matchId).select('chain status').lean();
     if (!match) throw new NotFoundException('Match not found');
 
-    const chain = ((match as any).chain || 'base') as ChainName;
+    const m = match as any;
+    const chain = (m.chain || 'base') as ChainName;
     const pool = await this.settlement.getBettingPool(matchId, chain);
+
+    const totalA = parseFloat(pool?.totalBetsA || '0');
+    const totalB = parseFloat(pool?.totalBetsB || '0');
+    const totalPool = totalA + totalB;
+    const pctA = totalPool > 0 ? Math.round((totalA / totalPool) * 10000) / 100 : 50;
+    const pctB = totalPool > 0 ? Math.round((totalB / totalPool) * 10000) / 100 : 50;
 
     return {
       matchId,
-      matchIdBytes32: this.settlement.toBytes32(matchId),
       chain,
-      pool,
+      status: m.status,
+      bettingOpen: m.status === 'active',
+      pool: {
+        totalBetsA: pool?.totalBetsA || '0',
+        totalBetsB: pool?.totalBetsB || '0',
+        totalPool: totalPool.toString(),
+        noContest: pool?.noContest || false,
+        percentA: pctA,
+        percentB: pctB,
+      },
     };
   }
 
@@ -144,11 +221,10 @@ export class BettingController {
     return { matchId, chain, address, bets };
   }
 
-  // ── Authenticated write endpoints ─────────────────────────────────
+  // ── Authenticated endpoints ───────────────────────────────────────
 
   /**
    * POST /betting/place
-   * Place a bet on a match. The backend handles approve + placeBet on-chain.
    */
   @Post('place')
   @UseGuards(JwtAuthGuard)
@@ -164,7 +240,6 @@ export class BettingController {
     const chain = ((match as any).chain || 'base') as ChainName;
     const amountAlpha = BigInt(dto.amount) * BigInt(10 ** TOKEN_DECIMALS);
 
-    // Check balance before attempting on-chain tx
     const balance = await this.settlement.getAgentAlphaBalance(walletAddress, chain);
     if (parseFloat(balance) < dto.amount) {
       throw new BadRequestException(
@@ -189,7 +264,6 @@ export class BettingController {
 
   /**
    * POST /betting/claim
-   * Claim winnings or refund from a settled/refunded match.
    */
   @Post('claim')
   @UseGuards(JwtAuthGuard)
@@ -206,11 +280,7 @@ export class BettingController {
 
     try {
       const txHash = await this.settlement.claimBet(dto.matchId, privateKey, chain);
-      return {
-        txHash,
-        matchId: dto.matchId,
-        chain,
-      };
+      return { txHash, matchId: dto.matchId, chain };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       throw new BadRequestException(`Claim failed: ${message}`);
@@ -219,18 +289,87 @@ export class BettingController {
 
   /**
    * GET /betting/my-bets/:matchId
-   * Get the authenticated user's bets on a match.
+   * Authenticated user's bets + potential winnings.
    */
   @Get('my-bets/:matchId')
   @UseGuards(JwtAuthGuard)
   async getMyBets(@CurrentUser() user: AuthPayload, @Param('matchId') matchId: string) {
-    const match = await this.matchModel.findById(matchId).select('chain').lean();
+    const match = await this.matchModel.findById(matchId).select('chain status result agents').lean();
     if (!match) throw new NotFoundException('Match not found');
 
+    const m = match as any;
     const { walletAddress } = await this.getUserWallet(user.userId);
-    const chain = ((match as any).chain || 'base') as ChainName;
-    const bets = await this.settlement.getUserBets(matchId, walletAddress, chain);
+    const chain = (m.chain || 'base') as ChainName;
 
-    return { matchId, chain, bets };
+    const [bets, pool] = await Promise.all([
+      this.settlement.getUserBets(matchId, walletAddress, chain),
+      this.settlement.getBettingPool(matchId, chain),
+    ]);
+
+    const myBetOnA = parseFloat(bets?.betOnA || '0');
+    const myBetOnB = parseFloat(bets?.betOnB || '0');
+    const myTotalBet = myBetOnA + myBetOnB;
+    const totalA = parseFloat(pool?.totalBetsA || '0');
+    const totalB = parseFloat(pool?.totalBetsB || '0');
+    const totalPool = totalA + totalB;
+
+    // Calculate potential/actual winnings
+    let potentialWinA = 0;
+    let potentialWinB = 0;
+    const netPool = totalPool * 0.95; // after 5% fee
+
+    if (myBetOnA > 0 && totalA > 0) {
+      potentialWinA = (myBetOnA / totalA) * netPool;
+    }
+    if (myBetOnB > 0 && totalB > 0) {
+      potentialWinB = (myBetOnB / totalB) * netPool;
+    }
+
+    // Determine outcome if match is completed
+    let outcome: 'won' | 'lost' | 'refund' | 'pending' | 'no_bet' = 'pending';
+    let winnings = 0;
+
+    if (myTotalBet === 0) {
+      outcome = 'no_bet';
+    } else if (m.status === 'completed') {
+      if (pool?.noContest) {
+        outcome = 'refund';
+        winnings = myTotalBet;
+      } else if (m.result?.winnerId) {
+        const winningSide = m.result.winnerId === m.agents.a.agentId ? 'a' : 'b';
+        if (winningSide === 'a' && myBetOnA > 0) {
+          outcome = 'won';
+          winnings = potentialWinA;
+        } else if (winningSide === 'b' && myBetOnB > 0) {
+          outcome = 'won';
+          winnings = potentialWinB;
+        } else {
+          outcome = 'lost';
+        }
+      } else {
+        // Draw
+        outcome = 'refund';
+        winnings = myTotalBet;
+      }
+    }
+
+    return {
+      matchId,
+      chain,
+      walletAddress,
+      bets: {
+        onA: bets?.betOnA || '0',
+        onB: bets?.betOnB || '0',
+        total: myTotalBet.toString(),
+        claimed: bets?.claimed || false,
+      },
+      potential: {
+        winIfA: Math.round(potentialWinA * 100) / 100,
+        winIfB: Math.round(potentialWinB * 100) / 100,
+      },
+      outcome,
+      winnings: Math.round(winnings * 100) / 100,
+      canClaim: outcome === 'won' || outcome === 'refund' ? !(bets?.claimed) : false,
+    };
   }
 }
