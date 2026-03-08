@@ -127,24 +127,29 @@ export class ResultHandlerService {
     );
 
     let payoutTxHash: string | null = null;
-    try {
-      if (winnerId && winningSide) {
-        const potAmountAlpha = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
-        const platformFeeAlpha = potAmountAlpha * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
-        const payoutAmountAlpha = potAmountAlpha - platformFeeAlpha;
+    const hasEscrow = !!matchDoc.txHashes?.escrow;
+    if (!hasEscrow && matchDoc.stakeAmount > 0) {
+      this.logger.warn(`Skipping settlement for match ${matchId}: no escrow tx recorded on-chain`);
+    } else if (hasEscrow) {
+      try {
+        if (winnerId && winningSide) {
+          const potAmountAlpha = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
+          const platformFeeAlpha = potAmountAlpha * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
+          const payoutAmountAlpha = potAmountAlpha - platformFeeAlpha;
 
-        const winnerWallet = matchState.agents[winningSide].walletAddress;
-        if (!winnerWallet) {
-          this.logger.error(`No wallet address for winner (side=${winningSide}) in match ${matchId}`);
+          const winnerWallet = matchState.agents[winningSide].walletAddress;
+          if (!winnerWallet) {
+            this.logger.error(`No wallet address for winner (side=${winningSide}) in match ${matchId}`);
+          } else {
+            payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountAlpha);
+          }
         } else {
-          payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountAlpha);
+          payoutTxHash = await this.settlement.refund(matchId);
         }
-      } else {
-        payoutTxHash = await this.settlement.refund(matchId);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Settlement failed for match ${matchId}: ${message}`);
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Settlement failed for match ${matchId}: ${message}`);
     }
 
     const matchResult = {
@@ -231,24 +236,29 @@ export class ResultHandlerService {
 
     // Settlement: payout to winner
     let payoutTxHash: string | null = null;
-    try {
-      if (winnerAgentId) {
-        const potAmountAlpha = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
-        const platformFeeAlpha = potAmountAlpha * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
-        const payoutAmountAlpha = potAmountAlpha - platformFeeAlpha;
+    const hasEscrow = !!matchDoc.txHashes?.escrow;
+    if (!hasEscrow && matchDoc.stakeAmount > 0) {
+      this.logger.warn(`Skipping settlement for poker match ${matchId}: no escrow tx recorded on-chain`);
+    } else if (hasEscrow) {
+      try {
+        if (winnerAgentId) {
+          const potAmountAlpha = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
+          const platformFeeAlpha = potAmountAlpha * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
+          const payoutAmountAlpha = potAmountAlpha - platformFeeAlpha;
 
-        const winnerAgent = pokerAgents.find(a => a.agentId === winnerAgentId);
-        if (!winnerAgent?.walletAddress) {
-          this.logger.error(`No wallet address for poker winner ${winnerAgentId} in match ${matchId}`);
+          const winnerAgent = pokerAgents.find(a => a.agentId === winnerAgentId);
+          if (!winnerAgent?.walletAddress) {
+            this.logger.error(`No wallet address for poker winner ${winnerAgentId} in match ${matchId}`);
+          } else {
+            payoutTxHash = await this.settlement.payout(matchId, winnerAgent.walletAddress, payoutAmountAlpha);
+          }
         } else {
-          payoutTxHash = await this.settlement.payout(matchId, winnerAgent.walletAddress, payoutAmountAlpha);
+          payoutTxHash = await this.settlement.refund(matchId);
         }
-      } else {
-        payoutTxHash = await this.settlement.refund(matchId);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Settlement failed for poker match ${matchId}: ${message}`);
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Settlement failed for poker match ${matchId}: ${message}`);
     }
 
     // Build final scores

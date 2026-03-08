@@ -182,7 +182,11 @@ export class ChessTurnControllerService {
     } catch (error: unknown) {
       if (matchState.clock) matchState.clock.clearTurn();
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error during chess turn for match ${matchId}: ${message}`);
+      if (message.includes('timeout') || message.includes('Timeout')) {
+        this.logger.warn(`Turn timed out for match ${matchId} (side=${currentSide})`);
+      } else {
+        this.logger.error(`Error during chess turn for match ${matchId}: ${message}`);
+      }
       return this.handleTimeout(matchState, chessEngine);
     }
   }
