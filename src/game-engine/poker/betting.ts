@@ -60,6 +60,11 @@ function getLastRaiseSize(state: PokerGameState): number {
           }
         }
       }
+      // If no prior action found, use big blind as the previous bet level in preflop
+      // (blinds are not recorded in actionsThisStreet)
+      if (prevBet === 0 && state.street === 'preflop') {
+        prevBet = state.bigBlind;
+      }
       return (streetActions[i].amount || 0) - prevBet;
     }
   }
