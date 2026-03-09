@@ -10,7 +10,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git:*)",
-      "Bash(./deploy.sh:*)"
+      "Bash(./deploy.sh:*)",
+      "Bash(bash:*)"
     ]
   }
 }

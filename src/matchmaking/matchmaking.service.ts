@@ -161,6 +161,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         status: 'waiting',
         joinedAt: lobbyPlayer.joinedAt,
         agentType: lobbyPlayer.agentType,
+        chain: 'base',
       };
     }
     return this.queue.get(agentId);
@@ -184,6 +185,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         status: 'waiting' as const,
         joinedAt: p.joinedAt,
         agentType: p.agentType,
+        chain: 'base',
       }));
     }
     if (gameType) return all.filter((e) => e.gameType === gameType);

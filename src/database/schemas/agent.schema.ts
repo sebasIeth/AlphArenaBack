@@ -85,9 +85,6 @@ export class Agent extends Document {
   @Prop({ type: [String], default: ['chess', 'poker'] })
   gameTypes: string[];
 
-  @Prop({ type: String, enum: ['base', 'celo'], default: 'base' })
-  chain: string;
-
   @Prop({ default: false })
   autoPlay: boolean;
 
