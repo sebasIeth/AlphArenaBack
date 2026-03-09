@@ -94,6 +94,8 @@ export class PokerTurnControllerService {
           return {
             seatIndex: p.seatIndex,
             name: agentInfo?.name,
+            playerId: p.playerId,
+            isAgent: agentInfo?.type != null && agentInfo.type !== 'human',
             stack: p.stack,
             currentBet: p.currentBet,
             hasFolded: p.hasFolded,
@@ -215,6 +217,8 @@ export class PokerTurnControllerService {
             return {
               seatIndex: p.seatIndex,
               name: agentInfo?.name,
+              playerId: p.playerId,
+              isAgent: agentInfo?.type != null && agentInfo.type !== 'human',
               stack: p.stack,
               currentBet: p.currentBet,
               hasFolded: p.hasFolded,

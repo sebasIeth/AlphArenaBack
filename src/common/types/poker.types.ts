@@ -121,6 +121,8 @@ export interface PokerMoveRequest {
 export interface PokerMoveRequestPlayer {
   seatIndex: number;
   name?: string;
+  playerId?: string;
+  isAgent?: boolean;
   stack: number;
   currentBet: number;
   hasFolded: boolean;
