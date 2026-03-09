@@ -48,7 +48,7 @@ export class PlayService {
         $or: [
           { 'agents.a.agentId': agentIdStr },
           { 'agents.b.agentId': agentIdStr },
-          { 'pokerPlayers.agentId': agent._id },
+          { 'pokerPlayers.agentId': agentIdStr },
         ],
         status: { $in: ['starting', 'active'] },
       }).select('_id').lean();
@@ -152,7 +152,7 @@ export class PlayService {
           $or: [
             { 'agents.a.agentId': agentIdStr },
             { 'agents.b.agentId': agentIdStr },
-            { 'pokerPlayers.agentId': agent._id },
+            { 'pokerPlayers.agentId': agentIdStr },
           ],
           status: { $in: ['starting', 'active'] },
         }).select('_id gameType status').lean();
