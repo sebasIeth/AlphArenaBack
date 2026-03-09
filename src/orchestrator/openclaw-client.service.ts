@@ -254,6 +254,74 @@ export class OpenClawClientService {
     }
   }
 
+  // ─── Poker ──────────────────────────────────────────────────────────────
+
+  async getPokerMove(
+    agent: OpenClawAgentInfo,
+    gameState: {
+      matchId: string;
+      handNumber: number;
+      street: string;
+      yourSeatIndex: number;
+      yourHoleCards: { rank: string; suit: string }[];
+      communityCards: { rank: string; suit: string }[];
+      pot: number;
+      yourStack: number;
+      players: { seatIndex: number; name?: string; stack: number; currentBet: number; hasFolded: boolean; isAllIn: boolean }[];
+      legalActions: { canFold: boolean; canCheck: boolean; canCall: boolean; callAmount: number; canRaise: boolean; minRaise: number; maxRaise: number; canAllIn: boolean; allInAmount: number };
+      actionHistory: { type: string; amount?: number; playerIndex: number; street: string }[];
+      blinds: { small: number; big: number };
+      moveNumber: number;
+    },
+    context?: { side: 'a' | 'b'; agentId: string; pokerSeatIndex: number },
+  ): Promise<{ action: string; amount?: number; raw?: string; source: 'ai' | 'fallback' | 'error' }> {
+    const { matchId, handNumber, street, yourHoleCards, communityCards, pot, yourStack, players, legalActions, actionHistory, blinds, moveNumber } = gameState;
+
+    const holeStr = yourHoleCards.map(c => `${c.rank}${c.suit[0]}`).join(', ');
+    const communityStr = communityCards.length > 0 ? communityCards.map(c => `${c.rank}${c.suit[0]}`).join(', ') : 'none';
+    const playersStr = players.filter(p => !p.hasFolded).map(p => `Seat${p.seatIndex}(${p.name ?? 'P' + p.seatIndex}: stack=${p.stack}, bet=${p.currentBet}${p.isAllIn ? ', ALL-IN' : ''})`).join(', ');
+
+    const legalStr: string[] = [];
+    if (legalActions.canFold) legalStr.push('fold');
+    if (legalActions.canCheck) legalStr.push('check');
+    if (legalActions.canCall) legalStr.push(`call (${legalActions.callAmount})`);
+    if (legalActions.canRaise) legalStr.push(`raise (min=${legalActions.minRaise}, max=${legalActions.maxRaise})`);
+    if (legalActions.canAllIn) legalStr.push(`all_in (${legalActions.allInAmount})`);
+
+    const recentActions = actionHistory.slice(-6).map(a => `Seat${a.playerIndex}: ${a.type}${a.amount ? ' ' + a.amount : ''}`).join(' → ');
+
+    const message = `Texas Hold'em Poker – Hand #${handNumber}, Street: ${street}. Blinds: ${blinds.small}/${blinds.big}.\n\nYour hole cards: ${holeStr}\nCommunity cards: ${communityStr}\nPot: ${pot} | Your stack: ${yourStack}\nPlayers: ${playersStr}\nRecent actions: ${recentActions || 'none'}\n\nLegal actions: ${legalStr.join(', ')}\n\nYou MUST respond in English. Briefly explain your reasoning and then respond with JSON: {"thinking":"your brief reasoning","action":"fold|check|call|raise|all_in","amount":NUMBER_IF_RAISE}`;
+
+    try {
+      const raw = await this.callOpenClaw(agent, message);
+
+      if (context) {
+        this.eventBus.emit('agent:thinking', {
+          matchId, side: context.side, agentId: context.agentId,
+          raw, moveNumber, pokerSeatIndex: context.pokerSeatIndex,
+        });
+      }
+
+      const parsed = extractJSON(raw);
+      if (parsed?.action && typeof parsed.action === 'string') {
+        const action = parsed.action.toLowerCase();
+        const validActions = ['fold', 'check', 'call', 'raise', 'all_in'];
+        if (validActions.includes(action)) {
+          return { action, amount: typeof parsed.amount === 'number' ? parsed.amount : undefined, raw, source: 'ai' };
+        }
+      }
+
+      this.logger.warn(`OpenClaw poker: invalid action, using fallback. Raw: ${raw?.substring(0, 100)}`);
+      const fallbackAction = legalActions.canCheck ? 'check' : 'fold';
+      return { action: fallbackAction, raw, source: 'fallback' };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`OpenClaw poker error: ${errMsg}`);
+      const fallbackAction = legalActions.canCheck ? 'check' : 'fold';
+      return { action: fallbackAction, source: 'error' };
+    }
+  }
+
   private validateMarrakechResponse(
     parsed: Record<string, unknown>,
     phase: string,

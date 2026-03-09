@@ -161,8 +161,48 @@ export class PokerTurnControllerService {
 
             const humanMove = await this.humanMoveService.waitForMove(matchId, this.seatToSide(currentIndex), agent.agentId);
             actionResponse = humanMove as PokerMoveResponse;
+          } else if (agent.type === 'openclaw' && agent.openclawUrl && agent.openclawToken) {
+            // OpenClaw agent: use dedicated method with reasoning prompt
+            // The thinking event is emitted inside the OpenClaw client with the actual reasoning
+            this.eventBus.emit('agent:thinking', {
+              matchId,
+              side: this.seatToSide(currentIndex),
+              agentId: agent.agentId,
+              raw: '',
+              moveNumber: state.actionHistory.length,
+              pokerSeatIndex: currentIndex,
+            });
+
+            const result = await this.agentClient.requestPokerMoveFromOpenClaw(
+              { endpointUrl: agent.endpointUrl, type: agent.type, openclawUrl: agent.openclawUrl, openclawToken: agent.openclawToken, openclawAgentId: agent.openclawAgentId },
+              {
+                matchId,
+                handNumber: state.handNumber,
+                street: state.street,
+                yourSeatIndex: currentIndex,
+                yourHoleCards: currentPlayer.holeCards,
+                communityCards: state.communityCards,
+                pot: state.pot,
+                yourStack: currentPlayer.stack,
+                players: playersInfo,
+                legalActions,
+                actionHistory: state.actionHistory,
+                blinds: { small: state.smallBlind, big: state.bigBlind },
+                moveNumber: state.actionHistory.length,
+              },
+              { side: this.seatToSide(currentIndex), agentId: agent.agentId, pokerSeatIndex: currentIndex },
+            );
+
+            actionResponse = result as PokerMoveResponse;
+
+            // Add artificial thinking delay so agents don't appear instant
+            const elapsed = Date.now() - thinkingStart;
+            const minDelay = AGENT_MIN_THINK_MS + Math.random() * (AGENT_MAX_THINK_MS - AGENT_MIN_THINK_MS);
+            if (elapsed < minDelay) {
+              await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
+            }
           } else {
-            // Notify clients that this agent is thinking
+            // Regular HTTP agent
             this.eventBus.emit('agent:thinking', {
               matchId,
               side: this.seatToSide(currentIndex),
@@ -174,6 +214,19 @@ export class PokerTurnControllerService {
 
             const raw = await this.agentClient.requestMove(agent.endpointUrl, moveRequest as any);
             actionResponse = raw as any;
+
+            // Emit reasoning if the agent response includes it
+            const rawStr = (raw as any)?.thinking || (raw as any)?.reasoning || '';
+            if (rawStr) {
+              this.eventBus.emit('agent:thinking', {
+                matchId,
+                side: this.seatToSide(currentIndex),
+                agentId: agent.agentId,
+                raw: rawStr,
+                moveNumber: state.actionHistory.length,
+                pokerSeatIndex: currentIndex,
+              });
+            }
 
             // Add artificial thinking delay so agents don't appear instant
             const elapsed = Date.now() - thinkingStart;
