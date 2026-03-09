@@ -89,6 +89,7 @@ export interface AgentThinkingEvent {
   agentId: string;
   raw: string;
   moveNumber: number;
+  pokerSeatIndex?: number;
 }
 
 export interface MatchmakingCountdownEvent {

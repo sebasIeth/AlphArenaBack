@@ -116,16 +116,15 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
     };
 
     const onAgentThinking = (data: AgentThinkingEvent): void => {
-      this.rooms.broadcast(data.matchId, {
-        type: 'agent:thinking',
-        data: {
-          matchId: data.matchId,
-          side: data.side,
-          agentId: data.agentId,
-          raw: data.raw,
-          moveNumber: data.moveNumber,
-        },
-      });
+      const payload: Record<string, unknown> = {
+        matchId: data.matchId,
+        side: data.side,
+        agentId: data.agentId,
+        raw: data.raw,
+        moveNumber: data.moveNumber,
+      };
+      if (data.pokerSeatIndex != null) payload.pokerSeatIndex = data.pokerSeatIndex;
+      this.rooms.broadcast(data.matchId, { type: 'agent:thinking', data: payload });
     };
 
     const onMatchmakingCountdown = (data: MatchmakingCountdownEvent): void => {

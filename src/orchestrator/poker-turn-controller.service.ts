@@ -162,6 +162,16 @@ export class PokerTurnControllerService {
             const humanMove = await this.humanMoveService.waitForMove(matchId, this.seatToSide(currentIndex), agent.agentId);
             actionResponse = humanMove as PokerMoveResponse;
           } else {
+            // Notify clients that this agent is thinking
+            this.eventBus.emit('agent:thinking', {
+              matchId,
+              side: this.seatToSide(currentIndex),
+              agentId: agent.agentId,
+              raw: '',
+              moveNumber: state.actionHistory.length,
+              pokerSeatIndex: currentIndex,
+            });
+
             const raw = await this.agentClient.requestMove(agent.endpointUrl, moveRequest as any);
             actionResponse = raw as any;
 
