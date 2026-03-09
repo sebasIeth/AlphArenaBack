@@ -55,6 +55,9 @@ export class Agent extends Document {
 @Prop({ required: false })
   selfclawPublicKey: string;
 
+  @Prop({ type: String, enum: ['base', 'celo'], default: 'base' })
+  chain: string;
+
   @Prop({ required: false, index: true })
   walletAddress: string;
 

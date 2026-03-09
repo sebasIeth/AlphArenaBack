@@ -26,6 +26,10 @@ export class UpdateAgentDto {
   @IsString()
   selfclawPublicKey?: string;
   @IsOptional()
+  @IsIn(['base', 'celo'], { message: 'Chain must be "base" or "celo"' })
+  chain?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1, { message: 'At least one game type is required' })
   @IsIn(['chess', 'poker'], { each: true })

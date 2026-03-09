@@ -30,6 +30,10 @@ export class CreateAgentDto {
   @IsString()                                                                                  
   selfclawPublicKey?: string;
   @IsOptional()
+  @IsIn(['base', 'celo'], { message: 'Chain must be "base" or "celo"' })
+  chain?: string;
+
+  @IsOptional()
   @IsArray()
   @IsIn(['chess', 'poker'], { each: true })
   gameTypes?: string[];
