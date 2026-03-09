@@ -24,6 +24,9 @@ export class QueueEntry extends Document {
   @Prop({ type: String, enum: ['waiting', 'pairing'], default: 'waiting' })
   status: string;
 
+  @Prop({ required: false })
+  agentType: string;
+
   @Prop({ default: Date.now })
   joinedAt: Date;
 }

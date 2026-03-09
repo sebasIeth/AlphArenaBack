@@ -37,7 +37,7 @@ export class AgentsService {
       name: dto.name,
       type: agentType,
       chain: dto.chain || 'base',
-      gameTypes: dto.gameTypes || ['chess'],
+      gameTypes: dto.gameTypes || ['chess', 'poker'],
       eloRating: DEFAULT_ELO,
       status: 'idle',
       stats: { wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0 },

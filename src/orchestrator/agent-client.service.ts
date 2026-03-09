@@ -124,6 +124,40 @@ export class AgentClientService {
     return result.move as ChessMoveResponse;
   }
 
+  async requestPokerMoveFromOpenClaw(
+    agent: AgentInfo,
+    gameState: {
+      matchId: string;
+      handNumber: number;
+      street: string;
+      yourSeatIndex: number;
+      yourHoleCards: { rank: string; suit: string }[];
+      communityCards: { rank: string; suit: string }[];
+      pot: number;
+      yourStack: number;
+      players: { seatIndex: number; name?: string; stack: number; currentBet: number; hasFolded: boolean; isAllIn: boolean }[];
+      legalActions: { canFold: boolean; canCheck: boolean; canCall: boolean; callAmount: number; canRaise: boolean; minRaise: number; maxRaise: number; canAllIn: boolean; allInAmount: number };
+      actionHistory: { type: string; amount?: number; playerIndex: number; street: string }[];
+      blinds: { small: number; big: number };
+      moveNumber: number;
+    },
+    context?: { side: 'a' | 'b'; agentId: string; pokerSeatIndex: number },
+  ): Promise<{ action: string; amount?: number }> {
+    const openclawAgent: OpenClawAgentInfo = {
+      openclawUrl: agent.openclawUrl!,
+      openclawToken: agent.openclawToken!,
+      openclawAgentId: agent.openclawAgentId || 'main',
+    };
+
+    const result = await this.openclawClient.getPokerMove(openclawAgent, gameState, context);
+
+    this.logger.log(
+      `OpenClaw poker agent responded (source=${result.source}, match=${gameState.matchId})`,
+    );
+
+    return { action: result.action, amount: result.amount };
+  }
+
   getOpenClawClient(): OpenClawClientService {
     return this.openclawClient;
   }

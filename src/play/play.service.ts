@@ -41,6 +41,25 @@ export class PlayService {
       await agent.save();
     }
 
+    // Recover stale in_match status (match already ended but agent wasn't reset)
+    if (agent.status === 'in_match') {
+      const agentIdStr = agent._id.toString();
+      const activeMatch = await this.matchModel.findOne({
+        $or: [
+          { 'agents.a.agentId': agentIdStr },
+          { 'agents.b.agentId': agentIdStr },
+          { 'pokerPlayers.agentId': agentIdStr },
+        ],
+        status: { $in: ['starting', 'active'] },
+      }).select('_id').lean();
+
+      if (!activeMatch) {
+        this.logger.log(`Recovering stale in_match status for agent ${agentIdStr}`);
+        agent.status = 'idle';
+        await agent.save();
+      }
+    }
+
     if (agent.status !== 'idle') {
       throw new BadRequestException(`Your player agent is currently "${agent.status}". It must be "idle" to join the queue.`);
     }
@@ -129,10 +148,12 @@ export class PlayService {
       }
 
       if (agent.status === 'in_match') {
+        const agentIdStr = agent._id.toString();
         const activeMatch = await this.matchModel.findOne({
           $or: [
-            { 'agents.a.agentId': agent._id.toString() },
-            { 'agents.b.agentId': agent._id.toString() },
+            { 'agents.a.agentId': agentIdStr },
+            { 'agents.b.agentId': agentIdStr },
+            { 'pokerPlayers.agentId': agentIdStr },
           ],
           status: { $in: ['starting', 'active'] },
         }).select('_id gameType status').lean();
@@ -141,7 +162,7 @@ export class PlayService {
           return {
             inQueue: false,
             inMatch: true,
-            agentId: agent._id.toString(),
+            agentId: agentIdStr,
             matchId: (activeMatch as any)._id.toString(),
             gameType: activeMatch.gameType,
             matchStatus: activeMatch.status,
@@ -205,6 +226,21 @@ export class PlayService {
     }
 
     return { success: true };
+  }
+
+  async getPokerLobbyStatus() {
+    const lobby = this.matchmakingService.getPokerLobby();
+    const countdownMs = this.matchmakingService.getPokerLobbyCountdownRemainingMs();
+    return {
+      playerCount: lobby.players.length,
+      players: lobby.players.map(p => ({
+        agentId: p.agentId,
+        name: p.name,
+        eloRating: p.eloRating,
+      })),
+      countdownMs: countdownMs >= 0 ? countdownMs : null,
+      stakeAmount: lobby.stakeAmount,
+    };
   }
 
   async getOrCreateHumanAgent(userId: string, gameType: string, chain: string = 'base'): Promise<Agent> {

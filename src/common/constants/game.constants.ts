@@ -29,6 +29,9 @@ export type ChainName = (typeof SUPPORTED_CHAINS)[number];
 export const POKER_SMALL_BLIND = 10;
 export const POKER_BIG_BLIND = 20;
 
+export const AGENT_MIN_THINK_MS = 4_000;
+export const AGENT_MAX_THINK_MS = 7_000;
+
 export const CHESS_PIECE = {
   EMPTY: 0,
   W_PAWN: 1, W_KNIGHT: 2, W_BISHOP: 3, W_ROOK: 4, W_QUEEN: 5, W_KING: 6,
