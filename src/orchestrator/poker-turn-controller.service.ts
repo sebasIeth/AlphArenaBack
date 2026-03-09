@@ -7,7 +7,7 @@ import {
   PokerAction, PokerActionType, PokerLegalActions, PokerMoveRequestPlayer,
 } from '../common/types/poker.types';
 import { MoveDoc, Match } from '../database/schemas';
-import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
+import { TURN_TIMEOUT_MS, AGENT_MIN_THINK_MS, AGENT_MAX_THINK_MS } from '../common/constants/game.constants';
 import {
   dealNewHand, getLegalActions, applyAction,
   isStreetOver, advanceStreet, resolveShowdown,
@@ -164,6 +164,13 @@ export class PokerTurnControllerService {
           } else {
             const raw = await this.agentClient.requestMove(agent.endpointUrl, moveRequest as any);
             actionResponse = raw as any;
+
+            // Add artificial thinking delay so agents don't appear instant
+            const elapsed = Date.now() - thinkingStart;
+            const minDelay = AGENT_MIN_THINK_MS + Math.random() * (AGENT_MAX_THINK_MS - AGENT_MIN_THINK_MS);
+            if (elapsed < minDelay) {
+              await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
+            }
           }
 
           if (matchState.clock) matchState.clock.clearTurn();
