@@ -35,7 +35,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private processing = false;
   private onPairedCallback: ((agentA: string, agentB: string, stakeAmount: number, gameType: string, chain: string) => Promise<string>) | null = null;
-  private onPokerLobbyReadyCallback: ((players: MatchAgentInput[], stakeAmount: number) => Promise<string>) | null = null;
+  private onPokerLobbyReadyCallback: ((players: MatchAgentInput[], stakeAmount: number, chain: string) => Promise<string>) | null = null;
   private readonly countdowns = new Map<string, { startedAt: number }>();
 
   // Poker lobby: single lobby (could be extended to multiple stake levels)
@@ -91,8 +91,8 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       );
     });
 
-    this.setOnPokerLobbyReadyCallback(async (players, stakeAmount) => {
-      return this.orchestrator.startPokerMatch(players, stakeAmount);
+    this.setOnPokerLobbyReadyCallback(async (players, stakeAmount, chain) => {
+      return this.orchestrator.startPokerMatch(players, stakeAmount, chain);
     });
 
     this.logger.log(`Matchmaking service started, queue size: ${this.queue.size()}`);
@@ -112,7 +112,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     this.onPairedCallback = cb;
   }
 
-  setOnPokerLobbyReadyCallback(cb: (players: MatchAgentInput[], stakeAmount: number) => Promise<string>) {
+  setOnPokerLobbyReadyCallback(cb: (players: MatchAgentInput[], stakeAmount: number, chain: string) => Promise<string>) {
     this.onPokerLobbyReadyCallback = cb;
   }
 
@@ -304,7 +304,8 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const matchId = await this.onPokerLobbyReadyCallback(players, stakeAmount);
+      const matchChain = agentDocs[0]?.chain || 'base';
+      const matchId = await this.onPokerLobbyReadyCallback(players, stakeAmount, matchChain);
       this.eventBus.emit('matchmaking:matched', {
         matchId,
         gameType: 'poker',

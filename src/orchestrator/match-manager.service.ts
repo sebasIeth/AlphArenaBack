@@ -341,6 +341,7 @@ export class MatchManagerService {
   async createPokerMultiplayerMatch(
     players: MatchAgentInput[],
     stakeAmount: number,
+    chain: string = 'base',
   ): Promise<string> {
     const potAmount = stakeAmount * players.length;
     const startingStack = POKER_BIG_BLIND * 100;
@@ -362,7 +363,7 @@ export class MatchManagerService {
 
     // Use first two players for agents.a/b compatibility (required field)
     const matchDoc = await this.matchModel.create({
-      gameType: 'poker',
+      gameType: 'poker', chain,
       agents: {
         a: { agentId: players[0].agentId, userId: players[0].userId, name: players[0].name, eloAtStart: players[0].eloRating },
         b: { agentId: players[1].agentId, userId: players[1].userId, name: players[1].name, eloAtStart: players[1].eloRating },
