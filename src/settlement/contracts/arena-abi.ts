@@ -144,7 +144,7 @@ export const arenaAbi = [
   { type: "error", name: "AlreadyEscrowed", inputs: [] },
   { type: "error", name: "PayoutExceedsEscrow", inputs: [] },
   { type: "error", name: "InvalidAmount", inputs: [] },
-  { type: "error", name: "NotOperator", inputs: [] },
+  { type: "error", name: "OnlyOperator", inputs: [] },
   { type: "error", name: "MatchAlreadyExists", inputs: [] },
 
   // ── Events ─────────────────────────────────────────────────────────
