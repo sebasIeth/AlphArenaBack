@@ -49,6 +49,12 @@ export class PokerTurnControllerService {
       `Hand #${state.handNumber} starting: match=${matchId}, dealer=${state.dealerSide}`,
     );
 
+    // If not enough players to play (e.g. timeout eliminations), skip persisting
+    // so the previous hand's resolved state (with holeCards/communityCards) stays in DB for replays
+    if (state.gameOver) {
+      return { pokerState: state, matchOver: true, winnerIndices: state.winnerIndices ?? [] };
+    }
+
     await this.persistPokerState(matchId, state);
 
     // 2. Loop through streets
