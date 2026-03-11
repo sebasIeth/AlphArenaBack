@@ -5,7 +5,8 @@ import { Agent, User, Match } from '../database/schemas';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { SettlementService } from '../settlement/settlement.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
-import { DEFAULT_ELO } from '../common/constants/game.constants';
+import { DEFAULT_ELO, TOKEN_DECIMALS } from '../common/constants/game.constants';
+import { decrypt } from '../common/crypto.util';
 
 @Injectable()
 export class PlayService {
@@ -206,6 +207,21 @@ export class PlayService {
       gasToken: chain === 'celo' ? 'CELO' : 'ETH',
       chainAvailable: true,
     };
+  }
+
+  async withdraw(userId: string, amount: number, toAddress?: string) {
+    const user = await this.userModel.findById(userId).select('+walletPrivateKey');
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.walletAddress || !user.walletPrivateKey) {
+      throw new BadRequestException('User does not have a wallet');
+    }
+
+    const destination = toAddress ?? user.walletAddress;
+    const amountAlpha = BigInt(Math.round(amount * 10 ** TOKEN_DECIMALS));
+    const privKey = decrypt(user.walletPrivateKey);
+
+    const txHash = await this.settlement.transferAlphaFromAgent(privKey, destination, amountAlpha, 'base');
+    return { txHash, amount, to: destination, chain: 'base' };
   }
 
   async submitMove(userId: string, matchId: string, move: unknown) {

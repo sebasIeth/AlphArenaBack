@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Body, Query, UseGuards, HttpCode } from '@nestjs/common';
-import { IsString, IsNumber, Min, Max, IsIn, IsOptional } from 'class-validator';
+import { IsString, IsNumber, Min, Max, IsIn, IsOptional, Matches } from 'class-validator';
 import { PlayService } from './play.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -18,6 +18,17 @@ class JoinDto {
   @IsOptional()
   @IsIn(['base', 'celo'])
   chain?: string;
+}
+
+class WithdrawDto {
+  @IsNumber()
+  @Min(0.01, { message: 'Minimum withdrawal is 0.01 ALPHA' })
+  amount: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{40}$/, { message: 'Invalid Ethereum address' })
+  toAddress?: string;
 }
 
 class MoveDto {
@@ -57,5 +68,10 @@ export class PlayController {
   @Post('move')
   async move(@CurrentUser() user: AuthPayload, @Body() dto: MoveDto) {
     return this.playService.submitMove(user.userId, dto.matchId, dto.move);
+  }
+
+  @Post('withdraw')
+  async withdraw(@CurrentUser() user: AuthPayload, @Body() dto: WithdrawDto) {
+    return this.playService.withdraw(user.userId, dto.amount, dto.toAddress);
   }
 }
