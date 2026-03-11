@@ -10,6 +10,7 @@ import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
 import { HumanMoveService } from './human-move.service';
+import { AgentPollService } from './agent-poll.service';
 
 export interface TurnResult {
   gameOver: boolean;
@@ -34,6 +35,7 @@ export class TurnControllerService {
     private readonly eventBus: EventBusService,
     private readonly gameEngine: GameEngineService,
     private readonly humanMoveService: HumanMoveService,
+    private readonly agentPollService: AgentPollService,
   ) {}
 
   async executeTurn(matchState: ActiveMatchState): Promise<TurnResult> {
@@ -91,7 +93,15 @@ export class TurnControllerService {
         const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId);
         response = { move: humanMove as [number, number] };
       } else if (agent.type === 'openclaw') {
-        response = await this.agentClient.requestReversiMoveFromOpenClaw(agent, moveRequest, { side: currentSide, agentId: agent.agentId });
+        this.agentPollService.setTurnPayload(agent.agentId, matchId, 'reversi', currentSide, moveRequest);
+        this.eventBus.emit('match:your_turn', {
+          matchId, side: currentSide, gameType: 'reversi',
+          board: gameState.board, legalMoves, moveNumber: gameState.moveNumber,
+          timeRemainingMs, turnTimeoutMs: TURN_TIMEOUT_MS,
+        });
+        const openclawMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId);
+        this.agentPollService.clearTurnPayload(agent.agentId);
+        response = openclawMove as { move: [number, number] };
       } else {
         response = await this.agentClient.requestMove(agent.endpointUrl, moveRequest);
       }

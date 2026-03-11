@@ -149,6 +149,11 @@ export class AgentsController {
     return { txHash, amount: dto.amount, to: toAddress, chain: agentChain };
   }
 
+  @Post(':id/regenerate-api-key')
+  regenerateApiKey(@CurrentUser() user: AuthPayload, @Param('id') id: string) {
+    return this.agentsService.regeneratePollingApiKey(id, user.userId);
+  }
+
   @Delete(':id')
   remove(@CurrentUser() user: AuthPayload, @Param('id') id: string) {
     return this.agentsService.remove(id, user.userId);

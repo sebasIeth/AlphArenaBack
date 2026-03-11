@@ -94,6 +94,9 @@ export class Agent extends Document {
   @Prop({ default: 0 })
   autoPlayConsecutiveErrors: number;
 
+  @Prop({ required: false, index: true, unique: true, sparse: true })
+  pollingApiKey: string;
+
   createdAt: Date;
   updatedAt: Date;
 }

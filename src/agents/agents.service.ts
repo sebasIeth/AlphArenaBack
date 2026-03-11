@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ForbiddenException, ConflictException, BadRequestException, Logger, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ForbiddenException, ConflictException, BadRequestException, Logger, forwardRef, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Agent, User } from '../database/schemas';
@@ -9,9 +9,10 @@ import { OpenClawWsService } from '../openclaw-ws';
 import { AutoPlayService } from '../matchmaking/auto-play.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { randomBytes } from 'crypto';
 
 @Injectable()
-export class AgentsService {
+export class AgentsService implements OnModuleInit {
   private readonly logger = new Logger(AgentsService.name);
 
   constructor(
@@ -21,6 +22,23 @@ export class AgentsService {
     @Inject(forwardRef(() => AutoPlayService)) private readonly autoPlayService: AutoPlayService,
     @Inject(forwardRef(() => MatchmakingService)) private readonly matchmakingService: MatchmakingService,
   ) {}
+
+  async onModuleInit() {
+    // Backfill pollingApiKey for existing openclaw agents that don't have one
+    const agents = await this.agentModel.find({
+      type: 'openclaw',
+      $or: [{ pollingApiKey: { $exists: false } }, { pollingApiKey: null }, { pollingApiKey: '' }],
+    });
+
+    for (const agent of agents) {
+      agent.pollingApiKey = `agent_${randomBytes(32).toString('hex')}`;
+      await agent.save();
+    }
+
+    if (agents.length > 0) {
+      this.logger.log(`Backfilled pollingApiKey for ${agents.length} existing openclaw agents`);
+    }
+  }
 
   async create(userId: string, dto: CreateAgentDto) {
     const existing = await this.agentModel.findOne({
@@ -55,6 +73,7 @@ export class AgentsService {
       agentData.openclawUrl = dto.openclawUrl;
       agentData.openclawToken = dto.openclawToken;
       agentData.openclawAgentId = dto.openclawAgentId || 'main';
+      agentData.pollingApiKey = `agent_${randomBytes(32).toString('hex')}`;
 
       // Generate a dedicated wallet for this agent
       const privKey = generatePrivateKey();
@@ -184,6 +203,19 @@ export class AgentsService {
 
   async testOpenClawWebhook(openclawUrl: string, openclawToken: string) {
     return this.openclawWs.testWake(openclawUrl, openclawToken);
+  }
+
+  async regeneratePollingApiKey(id: string, userId: string) {
+    const agent = await this.agentModel.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.type !== 'openclaw') throw new BadRequestException('Polling API key is only for OpenClaw agents');
+
+    agent.pollingApiKey = `agent_${randomBytes(32).toString('hex')}`;
+    await agent.save();
+
+    this.logger.log(`Polling API key regenerated for agent ${id}`);
+    return { pollingApiKey: agent.pollingApiKey };
   }
 
   async chatWithAgent(id: string, userId: string, message: string) {

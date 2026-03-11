@@ -10,6 +10,7 @@ import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
 import { HumanMoveService } from './human-move.service';
+import { AgentPollService } from './agent-poll.service';
 
 export interface ChessTurnResult {
   gameOver: boolean;
@@ -34,6 +35,7 @@ export class ChessTurnControllerService {
     private readonly activeMatches: ActiveMatchesService,
     private readonly eventBus: EventBusService,
     private readonly humanMoveService: HumanMoveService,
+    private readonly agentPollService: AgentPollService,
   ) {}
 
   async executeTurn(
@@ -99,7 +101,17 @@ export class ChessTurnControllerService {
         const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId);
         response = { move: humanMove as ChessUciMove };
       } else if (agent.type === 'openclaw') {
-        response = await this.agentClient.requestChessMoveFromOpenClaw(agent, moveRequest, { side: currentSide, agentId: agent.agentId });
+        this.agentPollService.setTurnPayload(agent.agentId, matchId, 'chess', currentSide, moveRequest);
+        this.eventBus.emit('match:your_turn', {
+          matchId, side: currentSide, gameType: 'chess',
+          board: chessEngine.getBoard() as unknown as Board,
+          legalMoves, fen: chessEngine.getFen(),
+          moveNumber: chessEngine.getMoveNumber(),
+          timeRemainingMs, turnTimeoutMs: TURN_TIMEOUT_MS,
+        });
+        const openclawMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId);
+        this.agentPollService.clearTurnPayload(agent.agentId);
+        response = openclawMove as { move: ChessUciMove };
       } else {
         const raw = await this.agentClient.requestMove(agent.endpointUrl, moveRequest as any);
         response = raw as any;

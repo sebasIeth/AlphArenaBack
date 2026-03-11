@@ -15,6 +15,7 @@ import { OpenClawClientService } from './openclaw-client.service';
 import { EventBusService } from './event-bus.service';
 import { ActiveMatchesService } from './active-matches.service';
 import { HumanMoveService } from './human-move.service';
+import { AgentPollService } from './agent-poll.service';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { HumanMoveService } from './human-move.service';
     EventBusService,
     ActiveMatchesService,
     HumanMoveService,
+    AgentPollService,
     OpenClawClientService,
     AgentClientService,
     TurnControllerService,
@@ -40,6 +42,6 @@ import { HumanMoveService } from './human-move.service';
     MatchManagerService,
     OrchestratorService,
   ],
-  exports: [OrchestratorService, EventBusService, ActiveMatchesService, HumanMoveService],
+  exports: [OrchestratorService, EventBusService, ActiveMatchesService, HumanMoveService, AgentPollService],
 })
 export class OrchestratorModule {}

@@ -18,6 +18,7 @@ import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
 import { HumanMoveService } from './human-move.service';
+import { AgentPollService } from './agent-poll.service';
 
 export interface MarrakechTurnResult {
   gameOver: boolean;
@@ -41,6 +42,7 @@ export class MarrakechTurnControllerService {
     private readonly eventBus: EventBusService,
     private readonly gameEngine: GameEngineService,
     private readonly humanMoveService: HumanMoveService,
+    private readonly agentPollService: AgentPollService,
   ) {}
 
   async executeTurn(
@@ -204,18 +206,37 @@ export class MarrakechTurnControllerService {
       }
     }
 
-    // Route OpenClaw agents through the OpenClaw client
-    if (agent?.type === 'openclaw' && agent.openclawUrl && agent.openclawToken) {
+    // Route OpenClaw agents through polling (agent polls for turn, submits move via POST)
+    if (agent?.type === 'openclaw' && side && agent.agentId) {
       try {
-        const openclawClient = this.agentClient.getOpenClawClient();
-        const context = side && agent.agentId ? { side, agentId: agent.agentId } : undefined;
-        const response = await openclawClient.getMarrakechMove(
-          { openclawUrl: agent.openclawUrl, openclawToken: agent.openclawToken, openclawAgentId: agent.openclawAgentId || 'main' },
-          matchId, phase, state, validActions, playerIndex, context,
-        );
+        const marrakechTurnPayload = {
+          matchId, gameType: 'marrakech', phase, state, validActions,
+          turnNumber: state.turnNumber,
+          timeRemainingMs: matchState.clock ? matchState.clock.getTimeRemainingMs() : 30_000,
+          yourPlayerIndex: playerIndex,
+        };
+
+        this.agentPollService.setTurnPayload(agent.agentId, matchId, 'marrakech', side, marrakechTurnPayload);
+
+        this.eventBus.emit('match:your_turn', {
+          matchId, side, gameType: 'marrakech',
+          board: this.serializeBoard(state.board),
+          legalMoves: phase === 'orient'
+            ? (validActions as any).directions
+            : phase === 'place'
+              ? state.validPlacements
+              : (validActions as any).borderOptions,
+          moveNumber: state.turnNumber,
+          timeRemainingMs: matchState.clock ? matchState.clock.getTimeRemainingMs() : 30_000,
+          turnTimeoutMs: TURN_TIMEOUT_MS,
+        });
+
+        const openclawMove = await this.humanMoveService.waitForMove(matchId, side, agent.agentId);
+        this.agentPollService.clearTurnPayload(agent.agentId);
         if (matchState.clock) matchState.clock.clearTurn();
-        return response;
+        return openclawMove as MarrakechMoveResponse;
       } catch {
+        this.agentPollService.clearTurnPayload(agent.agentId!);
         if (matchState.clock) matchState.clock.clearTurn();
         return null;
       }

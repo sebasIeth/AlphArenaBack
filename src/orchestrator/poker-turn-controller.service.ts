@@ -18,6 +18,7 @@ import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState, PokerAgentInfo } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
 import { HumanMoveService } from './human-move.service';
+import { AgentPollService } from './agent-poll.service';
 
 export interface PokerHandResult {
   pokerState: PokerGameState;
@@ -36,6 +37,7 @@ export class PokerTurnControllerService {
     private readonly activeMatches: ActiveMatchesService,
     private readonly eventBus: EventBusService,
     private readonly humanMoveService: HumanMoveService,
+    private readonly agentPollService: AgentPollService,
   ) {}
 
   async executeHand(
@@ -161,46 +163,50 @@ export class PokerTurnControllerService {
 
             const humanMove = await this.humanMoveService.waitForMove(matchId, this.seatToSide(currentIndex), agent.agentId);
             actionResponse = humanMove as PokerMoveResponse;
-          } else if (agent.type === 'openclaw' && agent.openclawUrl && agent.openclawToken) {
-            // OpenClaw agent: use dedicated method with reasoning prompt
-            // The thinking event is emitted inside the OpenClaw client with the actual reasoning
-            this.eventBus.emit('agent:thinking', {
+          } else if (agent.type === 'openclaw') {
+            // OpenClaw agent: set turn payload for polling, wait for move submission
+            const pokerTurnPayload = {
+              matchId,
+              gameType: 'poker',
+              handNumber: state.handNumber,
+              street: state.street,
+              yourSeatIndex: currentIndex,
+              yourHoleCards: currentPlayer.holeCards,
+              communityCards: state.communityCards,
+              pot: state.pot,
+              yourStack: currentPlayer.stack,
+              yourCurrentBet: currentPlayer.currentBet,
+              players: playersInfo,
+              legalActions,
+              actionHistory: state.actionHistory,
+              blinds: { small: state.smallBlind, big: state.bigBlind },
+              isDealer: currentPlayer.isDealer,
+              dealerIndex: state.dealerIndex,
+              timeRemainingMs,
+            };
+
+            this.agentPollService.setTurnPayload(
+              agent.agentId, matchId, 'poker',
+              this.seatToSide(currentIndex), pokerTurnPayload, currentIndex,
+            );
+
+            this.eventBus.emit('match:your_turn', {
               matchId,
               side: this.seatToSide(currentIndex),
-              agentId: agent.agentId,
-              raw: '',
+              gameType: 'poker',
+              board: [] as unknown as Board,
+              legalMoves: [legalActions],
               moveNumber: state.actionHistory.length,
+              timeRemainingMs,
+              turnTimeoutMs: TURN_TIMEOUT_MS,
               pokerSeatIndex: currentIndex,
             });
 
-            const result = await this.agentClient.requestPokerMoveFromOpenClaw(
-              { endpointUrl: agent.endpointUrl, type: agent.type, openclawUrl: agent.openclawUrl, openclawToken: agent.openclawToken, openclawAgentId: agent.openclawAgentId },
-              {
-                matchId,
-                handNumber: state.handNumber,
-                street: state.street,
-                yourSeatIndex: currentIndex,
-                yourHoleCards: currentPlayer.holeCards,
-                communityCards: state.communityCards,
-                pot: state.pot,
-                yourStack: currentPlayer.stack,
-                players: playersInfo,
-                legalActions,
-                actionHistory: state.actionHistory,
-                blinds: { small: state.smallBlind, big: state.bigBlind },
-                moveNumber: state.actionHistory.length,
-              },
-              { side: this.seatToSide(currentIndex), agentId: agent.agentId, pokerSeatIndex: currentIndex },
+            const openclawMove = await this.humanMoveService.waitForMove(
+              matchId, this.seatToSide(currentIndex), agent.agentId,
             );
-
-            actionResponse = result as PokerMoveResponse;
-
-            // Add artificial thinking delay so agents don't appear instant
-            const elapsed = Date.now() - thinkingStart;
-            const minDelay = AGENT_MIN_THINK_MS + Math.random() * (AGENT_MAX_THINK_MS - AGENT_MIN_THINK_MS);
-            if (elapsed < minDelay) {
-              await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
-            }
+            this.agentPollService.clearTurnPayload(agent.agentId);
+            actionResponse = openclawMove as PokerMoveResponse;
           } else {
             // Regular HTTP agent
             this.eventBus.emit('agent:thinking', {
