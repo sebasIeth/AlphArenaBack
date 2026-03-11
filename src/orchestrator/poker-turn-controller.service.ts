@@ -52,7 +52,7 @@ export class PokerTurnControllerService {
     // If not enough players to play (e.g. timeout eliminations), skip persisting
     // so the previous hand's resolved state (with holeCards/communityCards) stays in DB for replays
     if (state.gameOver) {
-      return { pokerState: state, matchOver: true, winnerIndices: state.winnerIndices ?? [] };
+      return { pokerState: state, matchOver: true, winner: state.winner === 'draw' ? null : state.winner };
     }
 
     await this.persistPokerState(matchId, state);
