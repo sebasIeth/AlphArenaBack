@@ -454,9 +454,51 @@ export class SettlementService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Transfer USDC from the platform wallet to a destination address.
+   *
+   * @returns The transaction hash, or `null` when running in no-op mode.
+   */
+  async transferUsdcFromPlatform(
+    to: string,
+    amount: bigint,
+  ): Promise<string | null> {
+    if (!this.isReady()) {
+      this.logger.warn('transferUsdcFromPlatform skipped — settlement service not initialised');
+      return null;
+    }
+
+    const { publicClient, walletClient, account } = this.clients!;
+
+    this.logger.log(
+      `Transferring USDC from platform ${account.address} to ${to}, amount=${amount.toString()}`,
+    );
+
+    const { request } = await publicClient.simulateContract({
+      address: this.usdcAddress!,
+      abi: erc20Abi,
+      functionName: 'transfer',
+      args: [to as Address, amount],
+      account,
+    });
+
+    const txHash = await walletClient.writeContract(request);
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    this.logger.log(`USDC platform transfer confirmed: txHash=${txHash}`);
+    return txHash;
+  }
+
+  /**
    * Get the platform wallet address (the operator account).
    */
   getPlatformWalletAddress(): string | null {
     return this.clients?.account.address ?? null;
+  }
+
+  /**
+   * Get the USDC token decimals used by this service.
+   */
+  getUsdcDecimals(): number {
+    return 18;
   }
 }
