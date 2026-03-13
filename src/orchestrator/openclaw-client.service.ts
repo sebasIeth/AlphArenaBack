@@ -7,6 +7,9 @@ import {
   MarrakechCarpetPlacement,
   ChessUciMove,
 } from '../common/types';
+import {
+  PokerMoveRequest, PokerMoveResponse, PokerActionType,
+} from '../common/types/poker.types';
 import { OpenClawWsService } from '../openclaw-ws';
 import { EventBusService } from './event-bus.service';
 
@@ -251,6 +254,75 @@ export class OpenClawClientService {
       const errMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`OpenClaw chess error: ${errMsg}`);
       return { move: { move: legalMoves[0] }, source: 'error', error: errMsg };
+    }
+  }
+
+  // ─── Poker ──────────────────────────────────────────────────────────────
+
+  async getPokerMove(
+    agent: OpenClawAgentInfo,
+    moveRequest: PokerMoveRequest,
+    context?: { side: 'a' | 'b'; agentId: string },
+  ): Promise<OpenClawMoveResult> {
+    const { matchId, handNumber, street, yourHoleCards, communityCards, pot,
+      yourStack, opponentStack, yourCurrentBet, opponentCurrentBet,
+      legalActions, actionHistory, blinds, isDealer } = moveRequest;
+
+    const holeStr = yourHoleCards.map((c) => `${c.rank}${c.suit[0]}`).join(', ');
+    const communityStr = communityCards.length > 0
+      ? communityCards.map((c) => `${c.rank}${c.suit[0]}`).join(', ')
+      : 'none yet';
+
+    const legalStr: string[] = [];
+    if (legalActions.canFold) legalStr.push('fold');
+    if (legalActions.canCheck) legalStr.push('check');
+    if (legalActions.canCall) legalStr.push(`call (${legalActions.callAmount})`);
+    if (legalActions.canRaise) legalStr.push(`raise (min ${legalActions.minRaise}, max ${legalActions.maxRaise})`);
+    if (legalActions.canAllIn) legalStr.push(`all_in (${legalActions.allInAmount})`);
+
+    const recentActions = actionHistory.slice(-6).map(
+      (a) => `${a.playerSide} ${a.type}${a.amount ? ' ' + a.amount : ''}`,
+    ).join(', ');
+
+    const message = `It's your turn in Texas Hold'em Poker (hand #${handNumber}, street: ${street}). You are ${isDealer ? 'dealer (button)' : 'out of position'}.\n\nYour hole cards: ${holeStr}\nCommunity cards: ${communityStr}\n\nPot: ${pot} | Your stack: ${yourStack} | Opponent stack: ${opponentStack}\nYour current bet: ${yourCurrentBet} | Opponent current bet: ${opponentCurrentBet}\nBlinds: ${blinds.small}/${blinds.big}\n\nRecent actions: ${recentActions || 'none'}\n\nLegal actions: ${legalStr.join(', ')}\n\nYou MUST respond in English. Briefly explain your reasoning and then respond with JSON: {"thinking":"your brief reasoning","action":"fold|check|call|raise|all_in","amount":NUMBER_IF_RAISE}`;
+
+    try {
+      const raw = await this.callOpenClaw(agent, message);
+
+      if (context) {
+        this.eventBus.emit('agent:thinking', {
+          matchId, side: context.side, agentId: context.agentId,
+          raw, moveNumber: actionHistory.length,
+        });
+      }
+
+      const parsed = extractJSON(raw);
+
+      if (parsed?.action && typeof parsed.action === 'string') {
+        const action = parsed.action as string;
+        const validActions: PokerActionType[] = ['fold', 'check', 'call', 'raise', 'all_in'];
+        if (validActions.includes(action as PokerActionType)) {
+          const response: PokerMoveResponse = { action: action as PokerActionType };
+          if (action === 'raise' && parsed.amount != null) {
+            response.amount = Number(parsed.amount);
+          }
+          return { move: response, source: 'ai', raw };
+        }
+      }
+
+      // Fallback: check if possible, otherwise fold
+      this.logger.warn(`OpenClaw poker: invalid action, using fallback. Raw: ${raw?.substring(0, 100)}`);
+      const fallback: PokerMoveResponse = legalActions.canCheck
+        ? { action: 'check' }
+        : { action: 'fold' };
+      return { move: fallback, source: 'fallback', raw };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`OpenClaw poker error: ${errMsg}`);
+      const fallback: PokerMoveResponse = legalActions.canCheck
+        ? { action: 'check' }
+        : { action: 'fold' };
+      return { move: fallback, source: 'error', error: errMsg };
     }
   }
 

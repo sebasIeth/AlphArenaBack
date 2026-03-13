@@ -134,6 +134,10 @@ export class PokerTurnControllerService {
 
             const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId);
             actionResponse = humanMove as PokerMoveResponse;
+          } else if (agent.type === 'openclaw') {
+            actionResponse = await this.agentClient.requestPokerMoveFromOpenClaw(
+              agent, moveRequest, { side: currentSide, agentId: agent.agentId },
+            );
           } else {
             const raw = await this.agentClient.requestMove(agent.endpointUrl, moveRequest as any);
             actionResponse = raw as any;

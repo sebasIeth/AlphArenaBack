@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
 import { MoveRequest, MoveResponse, ChessMoveRequest, ChessMoveResponse } from '../common/types';
+import { PokerMoveRequest, PokerMoveResponse } from '../common/types/poker.types';
 import { OpenClawClientService, OpenClawAgentInfo } from './openclaw-client.service';
 
 export interface AgentInfo {
@@ -122,6 +123,26 @@ export class AgentClientService {
     );
 
     return result.move as ChessMoveResponse;
+  }
+
+  async requestPokerMoveFromOpenClaw(
+    agent: AgentInfo,
+    moveRequest: PokerMoveRequest,
+    context?: { side: 'a' | 'b'; agentId: string },
+  ): Promise<PokerMoveResponse> {
+    const openclawAgent: OpenClawAgentInfo = {
+      openclawUrl: agent.openclawUrl!,
+      openclawToken: agent.openclawToken!,
+      openclawAgentId: agent.openclawAgentId || 'main',
+    };
+
+    const result = await this.openclawClient.getPokerMove(openclawAgent, moveRequest, context);
+
+    this.logger.log(
+      `OpenClaw poker agent responded (source=${result.source}, match=${moveRequest.matchId})`,
+    );
+
+    return result.move as PokerMoveResponse;
   }
 
   getOpenClawClient(): OpenClawClientService {
