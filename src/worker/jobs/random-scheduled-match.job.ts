@@ -82,7 +82,7 @@ export class RandomScheduledMatchJob {
             a.userId.toString() !== picked[0].userId.toString(),
         );
         if (!alt) continue;
-        picked[1] = alt;
+        picked[1] = alt!;
       }
 
       // Check this exact pair doesn't already have a pending scheduled match
