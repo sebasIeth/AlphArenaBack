@@ -67,24 +67,25 @@ export class MatchManagerService {
     agentB: MatchAgentInput,
     stakeAmount: number,
     gameType: string = 'chess',
+    existingMatchId?: string,
   ): Promise<string> {
-    this.logger.log(`Creating match: ${agentA.agentId} vs ${agentB.agentId}, gameType=${gameType}`);
+    this.logger.log(`Creating match: ${agentA.agentId} vs ${agentB.agentId}, gameType=${gameType}${existingMatchId ? ` (reusing ${existingMatchId})` : ''}`);
 
     const potAmount = stakeAmount * 2;
 
     if (gameType === 'marrakech') {
-      return this.createMarrakechMatch(agentA, agentB, stakeAmount, potAmount);
+      return this.createMarrakechMatch(agentA, agentB, stakeAmount, potAmount, existingMatchId);
     }
 
     if (gameType === 'chess') {
-      return this.createChessMatch(agentA, agentB, stakeAmount, potAmount);
+      return this.createChessMatch(agentA, agentB, stakeAmount, potAmount, existingMatchId);
     }
 
     if (gameType === 'poker') {
-      return this.createPokerMatch(agentA, agentB, stakeAmount, potAmount);
+      return this.createPokerMatch(agentA, agentB, stakeAmount, potAmount, existingMatchId);
     }
 
-    return this.createReversiMatch(agentA, agentB, stakeAmount, potAmount, gameType);
+    return this.createReversiMatch(agentA, agentB, stakeAmount, potAmount, gameType, existingMatchId);
   }
 
   private async createReversiMatch(
@@ -93,11 +94,12 @@ export class MatchManagerService {
     stakeAmount: number,
     potAmount: number,
     gameType: string,
+    existingMatchId?: string,
   ): Promise<string> {
     const initialState = this.gameEngine.createInitialState();
     const initialBoard = initialState.board;
 
-    const matchDoc = await this.matchModel.create({
+    const matchData = {
       gameType,
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
@@ -106,9 +108,16 @@ export class MatchManagerService {
       stakeAmount, potAmount, status: 'starting',
       currentBoard: initialBoard, currentTurn: 'a', moveCount: 0,
       timeouts: { a: 0, b: 0 }, txHashes: { escrow: null, payout: null },
-    });
+    };
 
-    const matchId = matchDoc._id.toString();
+    let matchId: string;
+    if (existingMatchId) {
+      await this.matchModel.findByIdAndUpdate(existingMatchId, { $set: matchData });
+      matchId = existingMatchId;
+    } else {
+      const matchDoc = await this.matchModel.create(matchData);
+      matchId = matchDoc._id.toString();
+    }
 
     const matchState: ActiveMatchState = {
       matchId, gameState: initialState, clock: null, turnDeadline: 0,
@@ -146,6 +155,7 @@ export class MatchManagerService {
     agentB: MatchAgentInput,
     stakeAmount: number,
     potAmount: number,
+    existingMatchId?: string,
   ): Promise<string> {
     const marrakech = this.gameEngine.getMarrakechEngine();
     const mkState = marrakech.createInitialState(2, [agentA.name, agentB.name]);
@@ -154,7 +164,7 @@ export class MatchManagerService {
       row.map((cell) => (cell ? cell.playerId + 1 : 0) as Piece),
     ) as Board;
 
-    const matchDoc = await this.matchModel.create({
+    const matchData = {
       gameType: 'marrakech',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
@@ -163,9 +173,16 @@ export class MatchManagerService {
       stakeAmount, potAmount, status: 'starting',
       currentBoard: initialBoard, currentTurn: 'a', moveCount: 0,
       timeouts: { a: 0, b: 0 }, txHashes: { escrow: null, payout: null },
-    });
+    };
 
-    const matchId = matchDoc._id.toString();
+    let matchId: string;
+    if (existingMatchId) {
+      await this.matchModel.findByIdAndUpdate(existingMatchId, { $set: matchData });
+      matchId = existingMatchId;
+    } else {
+      const matchDoc = await this.matchModel.create(matchData);
+      matchId = matchDoc._id.toString();
+    }
 
     const compatState: GameState = {
       board: initialBoard, currentPlayer: 'B', moveNumber: 0,
@@ -210,11 +227,12 @@ export class MatchManagerService {
     agentB: MatchAgentInput,
     stakeAmount: number,
     potAmount: number,
+    existingMatchId?: string,
   ): Promise<string> {
     const chessEngine = this.gameEngine.createChessEngine();
     const initialBoard = chessEngine.getBoard();
 
-    const matchDoc = await this.matchModel.create({
+    const matchData = {
       gameType: 'chess',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
@@ -224,9 +242,16 @@ export class MatchManagerService {
       currentBoard: initialBoard, currentTurn: 'a', moveCount: 0,
       timeouts: { a: 0, b: 0 }, txHashes: { escrow: null, payout: null },
       chessState: { fen: chessEngine.getFen(), moveHistory: [], pgn: '' },
-    });
+    };
 
-    const matchId = matchDoc._id.toString();
+    let matchId: string;
+    if (existingMatchId) {
+      await this.matchModel.findByIdAndUpdate(existingMatchId, { $set: matchData });
+      matchId = existingMatchId;
+    } else {
+      const matchDoc = await this.matchModel.create(matchData);
+      matchId = matchDoc._id.toString();
+    }
 
     // Side 'a' = White (first mover), Side 'b' = Black
     const compatState: GameState = {
@@ -273,12 +298,13 @@ export class MatchManagerService {
     agentB: MatchAgentInput,
     stakeAmount: number,
     potAmount: number,
+    existingMatchId?: string,
   ): Promise<string> {
     // Starting stack = 100 big blinds
     const startingStack = POKER_BIG_BLIND * 100;
     const pokerState = createPokerInitialState(startingStack, POKER_SMALL_BLIND, POKER_BIG_BLIND);
 
-    const matchDoc = await this.matchModel.create({
+    const matchData = {
       gameType: 'poker',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
@@ -288,9 +314,16 @@ export class MatchManagerService {
       currentBoard: [], currentTurn: 'a', moveCount: 0,
       timeouts: { a: 0, b: 0 }, txHashes: { escrow: null, payout: null },
       pokerState: { ...pokerState, deck: [] },
-    });
+    };
 
-    const matchId = matchDoc._id.toString();
+    let matchId: string;
+    if (existingMatchId) {
+      await this.matchModel.findByIdAndUpdate(existingMatchId, { $set: matchData });
+      matchId = existingMatchId;
+    } else {
+      const matchDoc = await this.matchModel.create(matchData);
+      matchId = matchDoc._id.toString();
+    }
 
     const compatState: GameState = {
       board: [] as unknown as Board, currentPlayer: 'B', moveNumber: 0,

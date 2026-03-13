@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { ScheduledMatch, Agent, Match, Bet } from '../../database/schemas';
+import { ScheduledMatch, Agent } from '../../database/schemas';
 import { OrchestratorService } from '../../orchestrator/orchestrator.service';
 import { MatchAgentInput } from '../../orchestrator/match-manager.service';
 
@@ -12,8 +12,6 @@ export class ScheduledMatchJob {
   constructor(
     @InjectModel(ScheduledMatch.name) private readonly scheduledMatchModel: Model<ScheduledMatch>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
-    @InjectModel(Match.name) private readonly matchModel: Model<Match>,
-    @InjectModel(Bet.name) private readonly betModel: Model<Bet>,
     private readonly orchestrator: OrchestratorService,
   ) {}
 
@@ -87,27 +85,15 @@ export class ScheduledMatchJob {
           openclawAgentId: agentB.openclawAgentId,
         };
 
-        // Start the match via orchestrator (creates a real Match with game state)
+        // Start the match via orchestrator, reusing the placeholder match doc if it exists
+        const placeholderMatchId = scheduled.matchId || undefined;
         const realMatchId = await this.orchestrator.startMatch(
           inputA,
           inputB,
           scheduled.stakeAmount,
           scheduled.gameType,
+          placeholderMatchId,
         );
-
-        // If a placeholder match existed for betting, migrate bets to the real match
-        const placeholderMatchId = scheduled.matchId;
-        if (placeholderMatchId && placeholderMatchId !== realMatchId) {
-          const migrated = await this.betModel.updateMany(
-            { matchId: placeholderMatchId },
-            { matchId: realMatchId },
-          );
-          if (migrated.modifiedCount > 0) {
-            this.logger.log(`Migrated ${migrated.modifiedCount} bet(s) from placeholder ${placeholderMatchId} → ${realMatchId}`);
-          }
-          // Remove the placeholder match doc
-          await this.matchModel.deleteOne({ _id: placeholderMatchId });
-        }
 
         // Mark as completed with the real matchId
         await this.scheduledMatchModel.updateOne({ _id: id }, { status: 'completed', matchId: realMatchId });

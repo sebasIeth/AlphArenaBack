@@ -13,7 +13,7 @@ const SCHEDULE_MAX_MINUTES = 3;
 const MAX_PENDING_SCHEDULED = 8;
 
 /** Default stake for auto-generated matches */
-const DEFAULT_STAKE = 1_000_000;
+const DEFAULT_STAKE = 0;
 
 /** Only these game types get auto-scheduled */
 const SCHEDULABLE_GAMES = ['chess', 'poker'];
@@ -37,10 +37,14 @@ export class RandomScheduledMatchJob {
     const slotsAvailable = MAX_PENDING_SCHEDULED - pendingCount;
     if (slotsAvailable <= 0) return;
 
-    // Find idle, non-human agents
+    // Find idle, non-human agents that have a working endpoint
     const agents = await this.agentModel.find({
       status: 'idle',
       type: { $ne: 'human' },
+      $or: [
+        { endpointUrl: { $exists: true, $ne: '' } },
+        { openclawUrl: { $exists: true, $ne: '' } },
+      ],
     }).lean();
 
     if (agents.length < 2) return;
