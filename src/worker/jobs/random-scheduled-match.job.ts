@@ -89,6 +89,16 @@ export class RandomScheduledMatchJob {
       });
       if (existingPair) continue;
 
+      // Skip agents that already have active or starting matches
+      const activeMatch = await this.matchModel.findOne({
+        status: { $in: ['active', 'starting'] },
+        $or: [
+          { 'agents.a.agentId': { $in: [picked[0]._id.toString(), picked[1]._id.toString()] } },
+          { 'agents.b.agentId': { $in: [picked[0]._id.toString(), picked[1]._id.toString()] } },
+        ],
+      });
+      if (activeMatch) continue;
+
       // Stagger: first match sooner, later ones a bit further out
       const baseMinutes = SCHEDULE_MIN_MINUTES + i;
       const randomMinutes = baseMinutes + Math.floor(Math.random() * (SCHEDULE_MAX_MINUTES - SCHEDULE_MIN_MINUTES + 1));
