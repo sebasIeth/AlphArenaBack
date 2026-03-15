@@ -142,6 +142,12 @@ export class AgentClientService {
       `OpenClaw poker agent responded (source=${result.source}, match=${moveRequest.matchId})`,
     );
 
+    // Throw on persistent errors so the turn controller increments timeouts
+    // and eventually ends the match instead of looping folds forever
+    if (result.source === 'error') {
+      throw new Error(`OpenClaw poker error: ${result.error || 'unknown'}`);
+    }
+
     return result.move as PokerMoveResponse;
   }
 

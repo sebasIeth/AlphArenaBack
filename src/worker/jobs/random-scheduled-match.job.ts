@@ -29,6 +29,9 @@ export class RandomScheduledMatchJob {
   ) {}
 
   async run(): Promise<void> {
+    // Auto-scheduling disabled — matches are created manually
+    return;
+
     // Check how many are already pending
     const pendingCount = await this.scheduledMatchModel.countDocuments({
       status: { $in: ['scheduled', 'starting'] },
@@ -79,7 +82,7 @@ export class RandomScheduledMatchJob {
             a.userId.toString() !== picked[0].userId.toString(),
         );
         if (!alt) continue;
-        picked[1] = alt;
+        picked[1] = alt!;
       }
 
       // Check this exact pair doesn't already have a pending scheduled match
