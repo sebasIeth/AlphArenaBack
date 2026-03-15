@@ -6,8 +6,10 @@ import { Agent } from '../database/schemas';
 import { ActiveMatchesService } from '../orchestrator/active-matches.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
 
-const DEFAULT_HEARTBEAT_SECONDS = 5;
-const IDLE_HEARTBEAT_SECONDS = 15;
+const MOVE_HEARTBEAT_SECONDS = 5;
+const IN_MATCH_HEARTBEAT_SECONDS = 10;
+const QUEUED_HEARTBEAT_SECONDS = 60;
+const IDLE_HEARTBEAT_SECONDS = 900;
 
 @Injectable()
 export class HeartbeatService {
@@ -46,16 +48,27 @@ export class HeartbeatService {
       }
     }
 
-    const recommendedHeartbeatSeconds = shouldMoveNow
-      ? DEFAULT_HEARTBEAT_SECONDS
-      : agent.status === 'in_match'
-        ? DEFAULT_HEARTBEAT_SECONDS
-        : IDLE_HEARTBEAT_SECONDS;
+    // Should the agent queue up?
+    const shouldQueueNow = agent.status === 'idle';
+
+    // Recommended heartbeat cadence (matches Clawleague style)
+    let recommendedHeartbeatSeconds: number;
+    if (shouldMoveNow) {
+      recommendedHeartbeatSeconds = MOVE_HEARTBEAT_SECONDS;
+    } else if (agent.status === 'in_match') {
+      recommendedHeartbeatSeconds = IN_MATCH_HEARTBEAT_SECONDS;
+    } else if (agent.status === 'queued') {
+      recommendedHeartbeatSeconds = QUEUED_HEARTBEAT_SECONDS;
+    } else {
+      recommendedHeartbeatSeconds = IDLE_HEARTBEAT_SECONDS;
+    }
 
     return {
       agentId,
       status: agent.status,
+      shouldQueueNow,
       shouldMoveNow,
+      nextMatchId: dueGameIds[0] ?? null,
       dueGameIds,
       recommendedHeartbeatSeconds,
       timestamp: new Date().toISOString(),

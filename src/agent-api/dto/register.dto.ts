@@ -6,6 +6,16 @@ export class RegisterAgentDto {
   @MaxLength(50)
   name: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  username?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  agentProvider?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @IsIn(['chess', 'poker', 'marrakech', 'reversi'], { each: true })
