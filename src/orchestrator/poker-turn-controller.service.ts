@@ -186,6 +186,7 @@ export class PokerTurnControllerService {
           pokerCommunityCards: state.communityCards,
           pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
           pokerHandNumber: state.handNumber,
+          pokerPlayers: this.buildPokerPlayersPublic(state),
         });
 
         await this.saveMove(matchId, agent.agentId, currentSide, moveNumber, validatedAction, state, thinkingTimeMs);
@@ -203,6 +204,23 @@ export class PokerTurnControllerService {
         state = advanceStreet(state);
         this.logger.log(`Hand #${state.handNumber}: advancing to ${state.street} (match=${matchId})`);
         await this.persistPokerState(matchId, state);
+
+        // Emit street advance so spectators see community cards immediately
+        this.eventBus.emit('match:move', {
+          matchId,
+          side: state.currentPlayerSide as 'a' | 'b',
+          move: { row: 0, col: 0 },
+          boardState: [] as unknown as Board,
+          score: { a: state.players.a.stack, b: state.players.b.stack },
+          moveNumber: state.actionHistory.length,
+          thinkingTimeMs: 0,
+          pokerStreet: state.street,
+          pokerPot: state.pot,
+          pokerCommunityCards: state.communityCards,
+          pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
+          pokerHandNumber: state.handNumber,
+          pokerPlayers: this.buildPokerPlayersPublic(state),
+        });
 
         // If showdown after advance (river → showdown), break
         if (state.street === 'showdown') break;
@@ -227,12 +245,47 @@ export class PokerTurnControllerService {
 
     await this.persistPokerState(matchId, state);
 
+    // Emit hand result — only reveal cards on actual showdown, not on fold
+    const isShowdown = !!state.showdownResult;
+    this.eventBus.emit('match:move', {
+      matchId,
+      side: (state.winner ?? state.currentPlayerSide) as 'a' | 'b',
+      move: { row: 0, col: 0 },
+      boardState: [] as unknown as Board,
+      score: { a: state.players.a.stack, b: state.players.b.stack },
+      moveNumber: state.actionHistory.length,
+      thinkingTimeMs: 0,
+      pokerStreet: state.street,
+      pokerPot: state.pot,
+      pokerCommunityCards: state.communityCards,
+      pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
+      pokerHandNumber: state.handNumber,
+      pokerPlayers: isShowdown ? this.buildPokerPlayersWithCards(state) : this.buildPokerPlayersPublic(state),
+      pokerShowdownResult: state.showdownResult ?? null,
+    });
+
     const matchOver = isMatchOver(state);
     return {
       pokerState: state,
       matchOver,
       winner: matchOver ? (state.winner as 'a' | 'b' | null) : null,
     };
+  }
+
+  /** Public view — no hole cards (safe to broadcast to spectators) */
+  private buildPokerPlayersPublic(state: PokerGameState) {
+    return [
+      { seatIndex: 0, side: 'a', stack: state.players.a.stack, holeCards: [] as { rank: string; suit: string }[], currentBet: state.players.a.currentBet, hasFolded: state.players.a.hasFolded, isAllIn: state.players.a.isAllIn, isDealer: state.players.a.isDealer },
+      { seatIndex: 1, side: 'b', stack: state.players.b.stack, holeCards: [] as { rank: string; suit: string }[], currentBet: state.players.b.currentBet, hasFolded: state.players.b.hasFolded, isAllIn: state.players.b.isAllIn, isDealer: state.players.b.isDealer },
+    ];
+  }
+
+  /** Full view — includes hole cards (only for showdown) */
+  private buildPokerPlayersWithCards(state: PokerGameState) {
+    return [
+      { seatIndex: 0, side: 'a', stack: state.players.a.stack, holeCards: state.players.a.holeCards, currentBet: state.players.a.currentBet, hasFolded: state.players.a.hasFolded, isAllIn: state.players.a.isAllIn, isDealer: state.players.a.isDealer },
+      { seatIndex: 1, side: 'b', stack: state.players.b.stack, holeCards: state.players.b.holeCards, currentBet: state.players.b.currentBet, hasFolded: state.players.b.hasFolded, isAllIn: state.players.b.isAllIn, isDealer: state.players.b.isDealer },
+    ];
   }
 
   private validateAction(

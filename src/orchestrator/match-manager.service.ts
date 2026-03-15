@@ -8,7 +8,7 @@ import {
 } from '../common/types';
 import {
   MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, TOKEN_DECIMALS,
-  POKER_SMALL_BLIND, POKER_BIG_BLIND,
+  POKER_SMALL_BLIND, POKER_BIG_BLIND, POKER_MAX_HANDS,
 } from '../common/constants/game.constants';
 import { Match, Agent } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
@@ -706,6 +706,16 @@ export class MatchManagerService {
       if (handResult.matchOver) {
         const winningSide: Side | undefined = handResult.winner === 'a' ? 'a' : handResult.winner === 'b' ? 'b' : undefined;
         await this.endMatch(matchId, 'score', winningSide);
+        return;
+      }
+
+      // Max hands limit to prevent infinite matches
+      if (handResult.pokerState.handNumber >= POKER_MAX_HANDS) {
+        const stackA = handResult.pokerState.players.a.stack;
+        const stackB = handResult.pokerState.players.b.stack;
+        const winningSide: Side | undefined = stackA > stackB ? 'a' : stackB > stackA ? 'b' : undefined;
+        this.logger.log(`Match ${matchId}: max hands (${POKER_MAX_HANDS}) reached, winner by stack: ${winningSide ?? 'draw'}`);
+        await this.endMatch(matchId, 'max_hands' as any, winningSide);
         return;
       }
 
