@@ -101,8 +101,8 @@ export class MatchManagerService {
       throw new Error('At least 2 agents are required to create a match');
     }
 
-    if (!stakeAmount || stakeAmount <= 0) {
-      throw new Error('stakeAmount is required and must be greater than 0');
+    if (stakeAmount === undefined || stakeAmount === null || stakeAmount < 0) {
+      throw new Error('stakeAmount is required and must be >= 0');
     }
 
     // Validate all agents are on the same chain
