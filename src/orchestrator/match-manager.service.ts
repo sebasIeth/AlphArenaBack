@@ -460,26 +460,29 @@ export class MatchManagerService {
       agentIdsBySide[side] = agentEntries[i][1].agentId;
     }
 
-    // Check all wallets are present
-    const missingWallets = agentEntries.filter((_, i) => !agentDocs[i]?.walletAddress);
-    if (missingWallets.length > 0) {
-      const missing = missingWallets.map(([side]) => side.toUpperCase()).join(', ');
-      this.logger.error(`Missing agent wallet for match ${matchId}: ${missing}`);
-      await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
-      await Promise.all(
-        agentEntries.map(([, agentInfo]) => this.agentModel.updateOne({ _id: agentInfo.agentId }, { status: 'idle' })),
-      );
-      this.eventBus.emit('match:error', { matchId, agentIds: agentIdsBySide, error: 'Missing wallet address for agent' });
-      this.activeMatches.removeMatch(matchId);
-      this.marrakechStates.delete(matchId);
-      this.matchGameTypes.delete(matchId);
-      return;
+    // Check all wallets are present (only required when stakeAmount > 0)
+    const stakeAmount = matchDoc.stakeAmount ?? 0;
+    if (stakeAmount > 0) {
+      const missingWallets = agentEntries.filter((_, i) => !agentDocs[i]?.walletAddress);
+      if (missingWallets.length > 0) {
+        const missing = missingWallets.map(([side]) => side.toUpperCase()).join(', ');
+        this.logger.error(`Missing agent wallet for match ${matchId}: ${missing}`);
+        await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
+        await Promise.all(
+          agentEntries.map(([, agentInfo]) => this.agentModel.updateOne({ _id: agentInfo.agentId }, { status: 'idle' })),
+        );
+        this.eventBus.emit('match:error', { matchId, agentIds: agentIdsBySide, error: 'Missing wallet address for agent' });
+        this.activeMatches.removeMatch(matchId);
+        this.marrakechStates.delete(matchId);
+        this.matchGameTypes.delete(matchId);
+        return;
+      }
     }
 
     // Store agent wallet addresses in active match state for settlement
     const updatedAgents: Record<string, any> = {};
     for (const [side, agentInfo] of agentEntries) {
-      updatedAgents[side] = { ...agentInfo, walletAddress: agentDocsBySide[side]!.walletAddress };
+      updatedAgents[side] = { ...agentInfo, walletAddress: agentDocsBySide[side]?.walletAddress };
     }
     this.activeMatches.updateMatch(matchId, { agents: updatedAgents });
 
