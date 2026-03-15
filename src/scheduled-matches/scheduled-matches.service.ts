@@ -24,6 +24,10 @@ export class ScheduledMatchesService {
       throw new BadRequestException('At least 2 agents are required');
     }
 
+    if (!dto.stakeAmount || dto.stakeAmount <= 0) {
+      throw new BadRequestException('stakeAmount is required and must be greater than 0');
+    }
+
     if (new Date(dto.scheduledAt).getTime() <= Date.now()) {
       throw new BadRequestException('scheduledAt must be in the future');
     }
@@ -33,9 +37,17 @@ export class ScheduledMatchesService {
       throw new BadRequestException('One or more agents not found');
     }
 
+    // Validate game type support and chain consistency
+    const matchChain = (agents[0] as any).chain || 'base';
     for (const agent of agents) {
       if (!agent.gameTypes.includes(dto.gameType)) {
         throw new BadRequestException(`Agent "${agent.name}" does not support game type "${dto.gameType}"`);
+      }
+      const agentChain = (agent as any).chain || 'base';
+      if (agentChain !== matchChain) {
+        throw new BadRequestException(
+          `Chain mismatch: agent "${agent.name}" is on "${agentChain}" but other agents are on "${matchChain}"`,
+        );
       }
     }
 
@@ -52,6 +64,7 @@ export class ScheduledMatchesService {
     // Create a placeholder Match so betting can open immediately
     const matchDoc = await this.matchModel.create({
       gameType: dto.gameType,
+      chain: matchChain,
       agents: {
         a: {
           agentId: agents[0]._id,

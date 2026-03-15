@@ -14,5 +14,6 @@ import { Agent, AgentSchema, Match, MatchSchema, User, UserSchema } from '../dat
   ],
   controllers: [LeaderboardController],
   providers: [LeaderboardService],
+  exports: [LeaderboardService],
 })
 export class LeaderboardModule {}

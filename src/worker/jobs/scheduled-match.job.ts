@@ -31,7 +31,13 @@ export class ScheduledMatchJob {
         // Mark as starting to prevent double-execution
         await this.scheduledMatchModel.updateOne({ _id: id }, { status: 'starting' });
 
-        // Only support 2-player matches for now (chess / heads-up poker)
+        // Reject zero-stake matches
+        if (!scheduled.stakeAmount || scheduled.stakeAmount <= 0) {
+          this.logger.warn(`Scheduled match ${id}: stakeAmount is 0, skipping`);
+          await this.scheduledMatchModel.updateOne({ _id: id }, { status: 'cancelled', cancelReason: 'stakeAmount must be greater than 0' });
+          continue;
+        }
+
         if (scheduled.agents.length < 2) {
           this.logger.warn(`Scheduled match ${id}: not enough agents (${scheduled.agents.length})`);
           await this.scheduledMatchModel.updateOne({ _id: id }, { status: 'cancelled', cancelReason: 'Not enough agents' });
@@ -60,6 +66,15 @@ export class ScheduledMatchJob {
           continue;
         }
 
+        // Validate both agents are on the same chain
+        const chainA = (agentA as any).chain || 'base';
+        const chainB = (agentB as any).chain || 'base';
+        if (chainA !== chainB) {
+          this.logger.warn(`Scheduled match ${id}: chain mismatch (${agentA.name}=${chainA}, ${agentB.name}=${chainB})`);
+          await this.scheduledMatchModel.updateOne({ _id: id }, { status: 'cancelled', cancelReason: `Chain mismatch: ${chainA} vs ${chainB}` });
+          continue;
+        }
+
         // Build MatchAgentInput
         const inputA: MatchAgentInput = {
           agentId: agentA._id.toString(),
@@ -68,6 +83,7 @@ export class ScheduledMatchJob {
           endpointUrl: agentA.endpointUrl || '',
           eloRating: agentA.eloRating,
           type: agentA.type,
+          chain: chainA,
           openclawUrl: agentA.openclawUrl,
           openclawToken: agentA.openclawToken,
           openclawAgentId: agentA.openclawAgentId,
@@ -80,6 +96,7 @@ export class ScheduledMatchJob {
           endpointUrl: agentB.endpointUrl || '',
           eloRating: agentB.eloRating,
           type: agentB.type,
+          chain: chainB,
           openclawUrl: agentB.openclawUrl,
           openclawToken: agentB.openclawToken,
           openclawAgentId: agentB.openclawAgentId,

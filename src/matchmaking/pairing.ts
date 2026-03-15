@@ -25,8 +25,9 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       if (entryA.gameType !== entryB.gameType) continue;
       if (process.env.NODE_ENV !== 'development' && entryA.userId === entryB.userId) {
         // Allow same-user pairing when one side is a human player
-        const hasHuman = entryA.agentType === 'human' || entryB.agentType === 'human';
-        if (!hasHuman) continue;
+        const hasHumanOrPull = entryA.agentType === 'human' || entryB.agentType === 'human'
+          || entryA.agentType === 'pull' || entryB.agentType === 'pull';
+        if (!hasHumanOrPull) continue;
       }
       if (Math.abs(entryA.eloRating - entryB.eloRating) > ELO_MATCH_RANGE) continue;
       if (!stakesCompatible(entryA.stakeAmount, entryB.stakeAmount)) continue;

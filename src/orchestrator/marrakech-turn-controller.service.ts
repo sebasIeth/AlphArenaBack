@@ -10,7 +10,7 @@ import {
   Piece,
   MarrakechCarpetPlacement,
 } from '../common/types';
-import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
+import { TURN_TIMEOUT_MS, PULL_AGENT_TURN_TIMEOUT_MS } from '../common/constants/game.constants';
 import { MoveDoc } from '../database/schemas';
 import { Match } from '../database/schemas';
 import { GameEngineService } from '../game-engine/game-engine.service';
@@ -177,7 +177,7 @@ export class MarrakechTurnControllerService {
     if (matchState.clock) matchState.clock.startTurn();
 
     // Route human agents through the HumanMoveService
-    if (agent?.type === 'human' && side && agent.agentId) {
+    if ((agent?.type === 'human' || agent?.type === 'pull') && side && agent.agentId) {
       try {
         const board = this.serializeBoard(state.board);
         this.eventBus.emit('match:your_turn', {
@@ -195,7 +195,8 @@ export class MarrakechTurnControllerService {
           turnTimeoutMs: TURN_TIMEOUT_MS,
         });
 
-        const humanMove = await this.humanMoveService.waitForMove(matchId, side, agent.agentId);
+        const moveTimeout = agent.type === 'pull' ? PULL_AGENT_TURN_TIMEOUT_MS : undefined;
+        const humanMove = await this.humanMoveService.waitForMove(matchId, side, agent.agentId, moveTimeout);
         if (matchState.clock) matchState.clock.clearTurn();
         return humanMove as MarrakechMoveResponse;
       } catch {

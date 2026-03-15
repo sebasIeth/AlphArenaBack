@@ -2,7 +2,7 @@ import { Board } from './game.types';
 
 export interface MatchCreatedEvent {
   matchId: string;
-  agents: { a: { agentId: string; name: string }; b: { agentId: string; name: string } };
+  agents: Record<string, { agentId: string; name: string }>;
   gameType: string;
   stakeAmount: number;
 }
@@ -17,7 +17,7 @@ export interface MatchStartedEvent {
   // Chess-specific
   fen?: string;
   // Poker-specific
-  pokerPlayerStacks?: { a: number; b: number };
+  pokerPlayerStacks?: Record<string, number>;
   pokerHandNumber?: number;
 }
 
@@ -59,7 +59,7 @@ export interface MatchTimeoutEvent {
 
 export interface MatchEndedEvent {
   matchId: string;
-  agentIds: { a: string; b: string };
+  agentIds: Record<string, string>;
   gameType: string;
   result: {
     winnerId: string | null;
@@ -71,7 +71,7 @@ export interface MatchEndedEvent {
 
 export interface MatchErrorEvent {
   matchId: string;
-  agentIds?: { a: string; b: string };
+  agentIds?: Record<string, string>;
   error: string;
 }
 

@@ -79,24 +79,28 @@ export class ResultHandlerService {
     );
 
     let payoutTxHash: string | null = null;
-    try {
-      if (winnerId && winningSide) {
-        const potAmountUsdc = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
-        const platformFeeUsdc = potAmountUsdc * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
-        const payoutAmountUsdc = potAmountUsdc - platformFeeUsdc;
+    if (matchDoc.potAmount > 0) {
+      try {
+        if (winnerId && winningSide) {
+          const potAmountUsdc = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
+          const platformFeeUsdc = potAmountUsdc * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
+          const payoutAmountUsdc = potAmountUsdc - platformFeeUsdc;
 
-        const winnerWallet = matchState.agents[winningSide].walletAddress;
-        if (!winnerWallet) {
-          this.logger.error(`No wallet address for winner (side=${winningSide}) in match ${matchId}`);
+          const winnerWallet = matchState.agents[winningSide].walletAddress;
+          if (!winnerWallet) {
+            this.logger.error(`No wallet address for winner (side=${winningSide}) in match ${matchId}`);
+          } else {
+            payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountUsdc);
+          }
         } else {
-          payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountUsdc);
+          payoutTxHash = await this.settlement.refund(matchId);
         }
-      } else {
-        payoutTxHash = await this.settlement.refund(matchId);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Settlement failed for match ${matchId}: ${message}`);
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Settlement failed for match ${matchId}: ${message}`);
+    } else {
+      this.logger.log(`Skipping settlement for zero-stake match ${matchId}`);
     }
 
     const matchResult = {
@@ -118,23 +122,18 @@ export class ResultHandlerService {
       },
     );
 
-    await this.updateAgentStats(
-      matchState.agents.a.agentId,
-      winningSide === 'a' ? 'win' : winningSide === 'b' ? 'loss' : 'draw',
-      eloChanges.a,
-      winningSide === 'a' ? this.calculateEarnings(matchDoc) : 0,
-    );
-
-    await this.updateAgentStats(
-      matchState.agents.b.agentId,
-      winningSide === 'b' ? 'win' : winningSide === 'a' ? 'loss' : 'draw',
-      eloChanges.b,
-      winningSide === 'b' ? this.calculateEarnings(matchDoc) : 0,
-    );
+    for (const [side, agent] of Object.entries(matchState.agents)) {
+      const outcome = winningSide === side ? 'win' : winningSide ? 'loss' : 'draw';
+      const eloDelta = eloChanges[side] ?? 0;
+      const earnings = winningSide === side ? this.calculateEarnings(matchDoc) : 0;
+      await this.updateAgentStats(agent.agentId, outcome, eloDelta, earnings);
+    }
 
     this.eventBus.emit('match:ended', {
       matchId,
-      agentIds: { a: matchState.agents.a.agentId, b: matchState.agents.b.agentId },
+      agentIds: Object.fromEntries(
+        Object.entries(matchState.agents).map(([side, a]) => [side, a.agentId]),
+      ),
       gameType: matchDoc.gameType ?? 'chess',
       result: { winnerId, reason, finalScore, totalMoves: gameState.moveNumber },
     });

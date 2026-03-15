@@ -24,41 +24,20 @@ export class StatsAggregationJob {
   async run(): Promise<void> {
     const pipeline = [
       { $match: { status: 'completed', result: { $ne: null } } },
+      { $addFields: { agentEntries: { $objectToArray: '$agents' } } },
+      { $unwind: '$agentEntries' },
       {
-        $facet: {
-          sideA: [
-            {
-              $project: {
-                agentId: '$agents.a.agentId',
-                isWinner: {
-                  $cond: [{ $eq: ['$result.winnerId', '$agents.a.agentId'] }, true, false],
-                },
-                isDraw: { $eq: ['$result.reason', 'draw'] },
-                earnings: {
-                  $cond: [{ $eq: ['$result.winnerId', '$agents.a.agentId'] }, '$potAmount', 0],
-                },
-              },
-            },
-          ],
-          sideB: [
-            {
-              $project: {
-                agentId: '$agents.b.agentId',
-                isWinner: {
-                  $cond: [{ $eq: ['$result.winnerId', '$agents.b.agentId'] }, true, false],
-                },
-                isDraw: { $eq: ['$result.reason', 'draw'] },
-                earnings: {
-                  $cond: [{ $eq: ['$result.winnerId', '$agents.b.agentId'] }, '$potAmount', 0],
-                },
-              },
-            },
-          ],
+        $project: {
+          agentId: '$agentEntries.v.agentId',
+          isWinner: {
+            $cond: [{ $eq: ['$result.winnerId', '$agentEntries.v.agentId'] }, true, false],
+          },
+          isDraw: { $eq: ['$result.reason', 'draw'] },
+          earnings: {
+            $cond: [{ $eq: ['$result.winnerId', '$agentEntries.v.agentId'] }, '$potAmount', 0],
+          },
         },
       },
-      { $project: { allSides: { $concatArrays: ['$sideA', '$sideB'] } } },
-      { $unwind: '$allSides' },
-      { $replaceRoot: { newRoot: '$allSides' } },
       {
         $group: {
           _id: '$agentId',

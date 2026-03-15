@@ -14,12 +14,9 @@ export interface ActiveMatchState {
   gameState: GameState;
   clock: MatchClockInterface | null;
   turnDeadline: number;
-  timeouts: { a: number; b: number };
+  timeouts: Record<string, number>;
   status: 'starting' | 'active';
-  agents: {
-    a: { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string; type?: string; openclawUrl?: string; openclawToken?: string; openclawAgentId?: string };
-    b: { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string; type?: string; openclawUrl?: string; openclawToken?: string; openclawAgentId?: string };
-  };
+  agents: Record<string, { agentId: string; endpointUrl: string; piece: PlayerColor; walletAddress?: string; type?: string; openclawUrl?: string; openclawToken?: string; openclawAgentId?: string }>;
   startedAt: number;
 }
 

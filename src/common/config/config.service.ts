@@ -102,6 +102,10 @@ export class ConfigService {
     return process.env.FRONTEND_URL || 'http://localhost:3000';
   }
 
+  get twitterBearerToken(): string | undefined {
+    return process.env.TWITTER_BEARER_TOKEN;
+  }
+
   private getRequired(key: string): string {
     const value = process.env[key];
     if (!value) {
