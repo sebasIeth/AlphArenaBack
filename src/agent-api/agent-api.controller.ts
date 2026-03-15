@@ -1,10 +1,13 @@
 import {
-  Controller, Post, Get, Body, Param, UseGuards, HttpCode,
+  Controller, Post, Get, Body, Param, UseGuards, HttpCode, BadRequestException,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApiKeyAuthGuard } from '../common/guards/api-key-auth.guard';
 import { CurrentAgent } from '../common/decorators/current-agent.decorator';
 import { Agent } from '../database/schemas';
+import { SettlementService } from '../settlement/settlement.service';
 import { AgentApiService } from './agent-api.service';
 import { HeartbeatService } from './heartbeat.service';
 import { RegisterAgentDto } from './dto/register.dto';
@@ -14,8 +17,10 @@ import { SubmitMoveDto } from './dto/move.dto';
 @Controller('v1')
 export class AgentApiController {
   constructor(
+    @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     private readonly agentApiService: AgentApiService,
     private readonly heartbeatService: HeartbeatService,
+    private readonly settlement: SettlementService,
   ) {}
 
   @Post('register')
@@ -70,5 +75,25 @@ export class AgentApiController {
     @Body() dto: SubmitMoveDto,
   ) {
     return this.agentApiService.submitMove(agent, matchId, dto);
+  }
+
+  @Get('wallet')
+  @UseGuards(ApiKeyAuthGuard)
+  async getWallet(@CurrentAgent() agent: Agent) {
+    if (!agent.walletAddress) {
+      throw new BadRequestException('Agent does not have a wallet');
+    }
+
+    const [usdc, eth] = await Promise.all([
+      this.settlement.getAgentUsdcBalance(agent.walletAddress),
+      this.settlement.getAgentEthBalance(agent.walletAddress),
+    ]);
+
+    return {
+      agentId: (agent as any)._id.toString(),
+      walletAddress: agent.walletAddress,
+      balances: { usdc, eth },
+      depositAddress: agent.walletAddress,
+    };
   }
 }
