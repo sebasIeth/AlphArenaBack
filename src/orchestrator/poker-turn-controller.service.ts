@@ -7,7 +7,7 @@ import {
   PokerAction, PokerActionType, PokerLegalActions,
 } from '../common/types/poker.types';
 import { MoveDoc, Match } from '../database/schemas';
-import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
+import { TURN_TIMEOUT_MS, PULL_AGENT_TURN_TIMEOUT_MS } from '../common/constants/game.constants';
 import {
   dealNewHand, getLegalActions, applyAction,
   isStreetOver, advanceStreet, resolveShowdown,
@@ -138,7 +138,8 @@ export class PokerTurnControllerService {
               })),
             });
 
-            const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId);
+            const moveTimeout = agent.type === 'pull' ? PULL_AGENT_TURN_TIMEOUT_MS : undefined;
+            const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId, moveTimeout);
             actionResponse = humanMove as PokerMoveResponse;
           } else if (agent.type === 'openclaw') {
             actionResponse = await this.agentClient.requestPokerMoveFromOpenClaw(

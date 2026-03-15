@@ -4,7 +4,7 @@ import { Model } from 'mongoose';
 import { GameState, PlayerColor, Side, MoveRequest, Position } from '../common/types';
 import { MoveDoc } from '../database/schemas';
 import { Match } from '../database/schemas';
-import { TURN_TIMEOUT_MS } from '../common/constants/game.constants';
+import { TURN_TIMEOUT_MS, PULL_AGENT_TURN_TIMEOUT_MS } from '../common/constants/game.constants';
 import { GameEngineService } from '../game-engine/game-engine.service';
 import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
@@ -88,7 +88,8 @@ export class TurnControllerService {
           turnTimeoutMs: TURN_TIMEOUT_MS,
         });
 
-        const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId);
+        const moveTimeout = agent.type === 'pull' ? PULL_AGENT_TURN_TIMEOUT_MS : undefined;
+        const humanMove = await this.humanMoveService.waitForMove(matchId, currentSide, agent.agentId, moveTimeout);
         response = { move: humanMove as [number, number] };
       } else if (agent.type === 'openclaw') {
         response = await this.agentClient.requestReversiMoveFromOpenClaw(agent, moveRequest, { side: currentSide, agentId: agent.agentId });

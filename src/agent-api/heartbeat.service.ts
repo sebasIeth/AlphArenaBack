@@ -6,10 +6,10 @@ import { Agent } from '../database/schemas';
 import { ActiveMatchesService } from '../orchestrator/active-matches.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
 
-const MOVE_HEARTBEAT_SECONDS = 5;
-const IN_MATCH_HEARTBEAT_SECONDS = 10;
+const MOVE_HEARTBEAT_SECONDS = 30;
+const IN_MATCH_HEARTBEAT_SECONDS = 30;
 const QUEUED_HEARTBEAT_SECONDS = 60;
-const IDLE_HEARTBEAT_SECONDS = 900;
+const IDLE_HEARTBEAT_SECONDS = 60;
 
 @Injectable()
 export class HeartbeatService {
