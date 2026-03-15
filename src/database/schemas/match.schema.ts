@@ -30,14 +30,14 @@ export class MatchResultSubDoc {
   })
   reason: string;
 
-  @Prop({ type: Object, required: true })
-  finalScore: { a: number; b: number };
+  @Prop({ type: MongooseSchema.Types.Mixed, required: true })
+  finalScore: Record<string, number>;
 
   @Prop({ required: true })
   totalMoves: number;
 
-  @Prop({ type: Object, required: true })
-  eloChange: { a: number; b: number };
+  @Prop({ type: MongooseSchema.Types.Mixed, required: true })
+  eloChange: Record<string, number>;
 }
 
 export const MatchResultSubDocSchema = SchemaFactory.createForClass(MatchResultSubDoc);
@@ -47,14 +47,11 @@ export class Match extends Document {
   @Prop({ required: true })
   gameType: string;
 
-  @Prop({
-    type: {
-      a: { type: MatchAgentSubDocSchema, required: true },
-      b: { type: MatchAgentSubDocSchema, required: true },
-    },
-    required: true,
-  })
-  agents: { a: MatchAgentSubDoc; b: MatchAgentSubDoc };
+  @Prop({ type: String, default: 'base' })
+  chain: string;
+
+  @Prop({ type: MongooseSchema.Types.Mixed, required: true })
+  agents: Record<string, MatchAgentSubDoc>;
 
   @Prop({ required: true })
   stakeAmount: number;
@@ -75,17 +72,17 @@ export class Match extends Document {
   @Prop({ type: [[Number]], default: [] })
   currentBoard: number[][];
 
-  @Prop({ type: String, enum: ['a', 'b'], default: 'a' })
+  @Prop({ type: String, default: 'a' })
   currentTurn: string;
 
   @Prop({ default: 0 })
   moveCount: number;
 
   @Prop({
-    type: Object,
+    type: MongooseSchema.Types.Mixed,
     default: () => ({ a: 0, b: 0 }),
   })
-  timeouts: { a: number; b: number };
+  timeouts: Record<string, number>;
 
   @Prop({
     type: Object,
@@ -93,8 +90,8 @@ export class Match extends Document {
   })
   txHashes: { escrow: string; payout: string };
 
-  @Prop({ type: Object, default: null })
-  scores: { a: number; b: number };
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null })
+  scores: Record<string, number>;
 
   @Prop({ type: MongooseSchema.Types.Mixed, default: null })
   marrakechState: any;
@@ -120,6 +117,8 @@ export class Match extends Document {
 
 export const MatchSchema = SchemaFactory.createForClass(Match);
 MatchSchema.index({ status: 1 });
+// Note: These agent indexes only cover 2-player matches (slots a & b).
+// For N-player matches, queries on agents.c, agents.d, etc. won't use these indexes.
 MatchSchema.index({ 'agents.a.userId': 1 });
 MatchSchema.index({ 'agents.b.userId': 1 });
 MatchSchema.index({ createdAt: -1 });

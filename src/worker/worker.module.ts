@@ -7,7 +7,7 @@ import { MatchCleanupJob } from './jobs/match-cleanup.job';
 import { RatingUpdateJob } from './jobs/rating-update.job';
 import { StatsAggregationJob } from './jobs/stats-aggregation.job';
 import { ScheduledMatchJob } from './jobs/scheduled-match.job';
-import { RandomScheduledMatchJob } from './jobs/random-scheduled-match.job';
+
 
 @Module({
   imports: [
@@ -24,7 +24,6 @@ import { RandomScheduledMatchJob } from './jobs/random-scheduled-match.job';
     RatingUpdateJob,
     StatsAggregationJob,
     ScheduledMatchJob,
-    RandomScheduledMatchJob,
     WorkerService,
   ],
 })

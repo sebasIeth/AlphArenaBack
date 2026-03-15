@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Body, Param, UseGuards, HttpCode,
 } from '@nestjs/common';
-import { IsString, IsBoolean, IsNumber, Min } from 'class-validator';
+import { IsString, IsNumber, Min } from 'class-validator';
 import { BettingService } from './betting.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -9,7 +9,7 @@ import { AuthPayload } from '../common/types';
 
 class PlaceBetDto {
   @IsString() matchId: string;
-  @IsBoolean() onAgentA: boolean;
+  @IsString() onAgentId: string;
   @IsNumber() @Min(0.01) amount: number;
 }
 
@@ -64,7 +64,7 @@ export class BettingController {
     @CurrentUser() user: AuthPayload,
     @Body() dto: PlaceBetDto,
   ) {
-    return this.service.placeBet(user.userId, dto.matchId, dto.onAgentA, dto.amount);
+    return this.service.placeBet(user.userId, dto.matchId, dto.onAgentId, dto.amount);
   }
 
   /** Auth — claim bet winnings/refund */

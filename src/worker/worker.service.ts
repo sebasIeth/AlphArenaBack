@@ -4,7 +4,6 @@ import { MatchCleanupJob } from './jobs/match-cleanup.job';
 import { RatingUpdateJob } from './jobs/rating-update.job';
 import { StatsAggregationJob } from './jobs/stats-aggregation.job';
 import { ScheduledMatchJob } from './jobs/scheduled-match.job';
-import { RandomScheduledMatchJob } from './jobs/random-scheduled-match.job';
 
 @Injectable()
 export class WorkerService {
@@ -15,7 +14,6 @@ export class WorkerService {
     private readonly ratingUpdate: RatingUpdateJob,
     private readonly statsAggregation: StatsAggregationJob,
     private readonly scheduledMatch: ScheduledMatchJob,
-    private readonly randomScheduledMatch: RandomScheduledMatchJob,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -61,13 +59,4 @@ export class WorkerService {
     }
   }
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
-  async handleRandomScheduledMatches(): Promise<void> {
-    try {
-      await this.randomScheduledMatch.run();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Random scheduled match job failed: ${message}`);
-    }
-  }
 }

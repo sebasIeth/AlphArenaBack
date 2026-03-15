@@ -30,10 +30,9 @@ export class MatchCleanupJob {
 
     const staleMatchIds = staleMatches.map((m) => m._id);
 
-    const agentIds = staleMatches.flatMap((m) => [
-      m.agents.a.agentId,
-      m.agents.b.agentId,
-    ]);
+    const agentIds = staleMatches.flatMap((m) =>
+      Object.values(m.agents).map((a) => a.agentId),
+    );
 
     const matchUpdateResult = await this.matchModel.updateMany(
       { _id: { $in: staleMatchIds } },

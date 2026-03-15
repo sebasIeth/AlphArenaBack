@@ -17,8 +17,12 @@ export class Bet extends Document {
   @Prop({ type: String, default: null })
   walletAddress: string;
 
-  /** true = bet on agent A, false = bet on agent B */
-  @Prop({ required: true })
+  /** ID of the agent the user is betting on */
+  @Prop({ type: String, required: true, index: true })
+  onAgentId: string;
+
+  /** @deprecated kept for backwards compat with old bets */
+  @Prop({ type: Boolean, default: null })
   onAgentA: boolean;
 
   @Prop({ required: true, min: 0 })

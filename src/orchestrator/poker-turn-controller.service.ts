@@ -18,6 +18,9 @@ import { ActiveMatchesService, ActiveMatchState } from './active-matches.service
 import { EventBusService } from './event-bus.service';
 import { HumanMoveService } from './human-move.service';
 
+/** Abort match after this many consecutive agent errors */
+const MAX_CONSECUTIVE_ERRORS = 3;
+
 export interface PokerHandResult {
   pokerState: PokerGameState;
   matchOver: boolean;
@@ -36,6 +39,9 @@ export class PokerTurnControllerService {
     private readonly eventBus: EventBusService,
     private readonly humanMoveService: HumanMoveService,
   ) {}
+
+  /** Track consecutive errors per match to abort runaway loops */
+  private consecutiveErrors = new Map<string, number>();
 
   async executeHand(
     matchState: ActiveMatchState,
@@ -144,10 +150,23 @@ export class PokerTurnControllerService {
           }
 
           if (matchState.clock) matchState.clock.clearTurn();
+          this.consecutiveErrors.delete(matchId);
         } catch (error: unknown) {
           if (matchState.clock) matchState.clock.clearTurn();
           const message = error instanceof Error ? error.message : String(error);
           this.logger.error(`Error getting poker action for match ${matchId}: ${message}`);
+
+          // Track consecutive errors — abort match if threshold exceeded
+          const errCount = (this.consecutiveErrors.get(matchId) || 0) + 1;
+          this.consecutiveErrors.set(matchId, errCount);
+
+          if (errCount >= MAX_CONSECUTIVE_ERRORS) {
+            this.logger.error(
+              `Match ${matchId} aborted: ${errCount} consecutive agent errors`,
+            );
+            this.consecutiveErrors.delete(matchId);
+            return { pokerState: state, matchOver: true, winner: null };
+          }
 
           // Timeout → auto-fold
           actionResponse = { action: 'fold' };

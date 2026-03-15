@@ -5,7 +5,7 @@ import { Agent, User, Match } from '../database/schemas';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { SettlementService } from '../settlement/settlement.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
-import { DEFAULT_ELO } from '../common/constants/game.constants';
+import { DEFAULT_ELO, TOKEN_DECIMALS } from '../common/constants/game.constants';
 
 @Injectable()
 export class PlayService {
@@ -225,5 +225,25 @@ export class PlayService {
 
     this.logger.log(`Created human agent "${user.username}" for user ${userId} (gameType=${gameType})`);
     return agent;
+  }
+
+  async withdraw(userId: string, amount: number, to: string) {
+    const user = await this.userModel.findById(userId).select('+walletPrivateKey');
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.walletAddress || !user.walletPrivateKey) {
+      throw new BadRequestException('User does not have a wallet');
+    }
+
+    const balanceStr = await this.settlement.getAgentUsdcBalance(user.walletAddress);
+    const balance = parseFloat(balanceStr);
+    if (balance < amount) {
+      throw new BadRequestException(`Insufficient balance: you have ${balance.toFixed(2)} ALPHA but tried to withdraw ${amount}`);
+    }
+
+    const amountWei = BigInt(Math.round(amount * 10 ** TOKEN_DECIMALS));
+    const txHash = await this.settlement.transferUsdcFromAgent(user.walletPrivateKey, to, amountWei);
+
+    this.logger.log(`Withdraw: user=${userId}, amount=${amount}, to=${to}, txHash=${txHash}`);
+    return { txHash, amount, to };
   }
 }

@@ -16,6 +16,15 @@ class JoinDto {
   stakeAmount: number;
 }
 
+class WithdrawDto {
+  @IsNumber()
+  @Min(0.01)
+  amount: number;
+
+  @IsString()
+  to: string;
+}
+
 class MoveDto {
   @IsString()
   matchId: string;
@@ -47,6 +56,11 @@ export class PlayController {
   @Get('balance')
   async balance(@CurrentUser() user: AuthPayload) {
     return this.playService.getBalance(user.userId);
+  }
+
+  @Post('withdraw')
+  async withdraw(@CurrentUser() user: AuthPayload, @Body() dto: WithdrawDto) {
+    return this.playService.withdraw(user.userId, dto.amount, dto.to);
   }
 
   @Post('move')
