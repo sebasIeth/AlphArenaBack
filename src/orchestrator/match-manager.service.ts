@@ -68,6 +68,10 @@ export class MatchManagerService {
     private readonly gameEngine: GameEngineService,
   ) {}
 
+  getChessMoveHistory(matchId: string): ChessUciMove[] | undefined {
+    return this.chessMoveHistories.get(matchId);
+  }
+
   /**
    * Create a match with exactly two agents (backwards-compatible).
    * Delegates to createMatchMulti internally.

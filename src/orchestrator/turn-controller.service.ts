@@ -75,7 +75,7 @@ export class TurnControllerService {
     try {
       let response: { move: [number, number] };
 
-      if (agent.type === 'human') {
+      if (agent.type === 'human' || agent.type === 'pull') {
         // Emit your_turn event so the frontend knows it's the human's turn
         this.eventBus.emit('match:your_turn', {
           matchId,

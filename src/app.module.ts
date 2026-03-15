@@ -20,6 +20,7 @@ import { PlayModule } from './play/play.module';
 import { MailModule } from './mail/mail.module';
 import { ScheduledMatchesModule } from './scheduled-matches/scheduled-matches.module';
 import { BettingModule } from './betting/betting.module';
+import { AgentApiModule } from './agent-api/agent-api.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -54,6 +55,7 @@ import { HealthController } from './health.controller';
     PlayModule,
     ScheduledMatchesModule,
     BettingModule,
+    AgentApiModule,
     WorkerModule,
     GameEngineModule,
   ],

@@ -35,7 +35,7 @@ export class Agent extends Document {
 
   @Prop({
     type: String,
-    enum: ['http', 'openclaw', 'human'],
+    enum: ['http', 'openclaw', 'human', 'pull'],
     default: 'http',
   })
   type: string;
@@ -93,6 +93,30 @@ export class Agent extends Document {
 
   @Prop({ default: 0 })
   autoPlayConsecutiveErrors: number;
+
+  @Prop({ required: false, index: true, unique: true, sparse: true })
+  apiKeyHash: string;
+
+  @Prop({ required: false })
+  apiKeyPrefix: string;
+
+  @Prop({ type: Date, required: false })
+  lastHeartbeat: Date;
+
+  @Prop({ required: false, index: true, unique: true, sparse: true })
+  claimToken: string;
+
+  @Prop({ type: String, enum: ['unclaimed', 'pending', 'claimed'], default: 'unclaimed' })
+  claimStatus: string;
+
+  @Prop({ required: false })
+  xUsername: string;
+
+  @Prop({ required: false })
+  xVerificationChallenge: string;
+
+  @Prop({ required: false })
+  xVerificationPostUrl: string;
 
   createdAt: Date;
   updatedAt: Date;

@@ -40,6 +40,6 @@ import { HumanMoveService } from './human-move.service';
     MatchManagerService,
     OrchestratorService,
   ],
-  exports: [OrchestratorService, EventBusService, ActiveMatchesService, HumanMoveService],
+  exports: [OrchestratorService, EventBusService, ActiveMatchesService, HumanMoveService, MatchManagerService],
 })
 export class OrchestratorModule {}

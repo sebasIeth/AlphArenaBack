@@ -83,7 +83,7 @@ export class ChessTurnControllerService {
     try {
       let response: { move: ChessUciMove };
 
-      if (agent.type === 'human') {
+      if (agent.type === 'human' || agent.type === 'pull') {
         this.eventBus.emit('match:your_turn', {
           matchId,
           side: currentSide,

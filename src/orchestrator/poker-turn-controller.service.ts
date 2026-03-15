@@ -116,7 +116,7 @@ export class PokerTurnControllerService {
         let actionResponse: PokerMoveResponse;
 
         try {
-          if (agent.type === 'human') {
+          if (agent.type === 'human' || agent.type === 'pull') {
             this.eventBus.emit('match:your_turn', {
               matchId,
               side: currentSide,
