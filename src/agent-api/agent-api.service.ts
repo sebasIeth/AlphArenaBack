@@ -59,7 +59,7 @@ export class AgentApiService {
       apiKey: rawKey,
       apiKeyPrefix: prefix,
       claimToken,
-      claimUrl: `/v1/claims/${claimToken}`,
+      claimUrl: `http://187.77.63.248:3000/claim/${claimToken}`,
       name: dto.name,
       gameTypes: dto.gameTypes,
       walletAddress: agent.walletAddress,
