@@ -59,7 +59,7 @@ export class AgentApiService {
       apiKey: rawKey,
       apiKeyPrefix: prefix,
       claimToken,
-      claimUrl: `http://187.77.63.248:3000/claim/${claimToken}`,
+      claimUrl: `https://app.alpharena.ai/claim/${claimToken}`,
       name: dto.name,
       gameTypes: dto.gameTypes,
       walletAddress: agent.walletAddress,
