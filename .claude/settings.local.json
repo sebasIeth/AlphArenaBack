@@ -9,7 +9,15 @@
       "Bash(git checkout:*)",
       "Bash(git stash:*)",
       "Bash(git log:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(bash deploy.sh 2>&1)",
+      "Bash(find /Users/sebastianramirezgarcua/WebstormProjects/AlphArenaFront -name \"*.tsx\" -o -name \"*.ts\" | grep -E \"\\(layout|page\\)\\\\.tsx$\" | sort)",
+      "Bash(cd /Users/sebastianramirezgarcua/WebstormProjects/AlphArenaFront && npx next build 2>&1 | tail -30)",
+      "Bash(cd /Users/sebastianramirezgarcua/WebstormProjects/AlphArenaFront && bash deploy.sh 2>&1)",
+      "Bash(cd /Users/sebastianramirezgarcua/WebstormProjects/AlphArenaFront && npx next build 2>&1 | tail -5)",
+      "Bash(cd /Users/sebastianramirezgarcua/WebstormProjects/AlphArenaFront && sed -i '' 's|\"/agents/new\"|\"/docs\"|g' app/agents/page.tsx app/matchmaking/page.tsx app/dashboard/page.tsx)",
+      "Bash(cd /Users/sebastianramirezgarcua/WebstormProjects/AlphArenaFront && npx next build 2>&1 | tail -8)",
+      "Bash(cd /Users/sebastianramirezgarcua/WebstormProjects/AlphArenaFront && npx next build 2>&1)"
     ]
   }
 }
