@@ -34,7 +34,19 @@ export class StatsAggregationJob {
           },
           isDraw: { $eq: ['$result.reason', 'draw'] },
           earnings: {
-            $cond: [{ $eq: ['$result.winnerId', '$agentEntries.v.agentId'] }, '$potAmount', 0],
+            $cond: [
+              { $eq: ['$result.winnerId', '$agentEntries.v.agentId'] },
+              {
+                $subtract: [
+                  '$potAmount',
+                  { $add: [
+                    { $floor: { $multiply: ['$potAmount', 0.05] } },
+                    '$stakeAmount',
+                  ] },
+                ],
+              },
+              0,
+            ],
           },
         },
       },

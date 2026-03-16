@@ -20,11 +20,27 @@ export class AgentApiPublicController {
 
   @Get('stats')
   async getStats() {
-    const [totalAgents, totalMatches, activeMatches, totalPlayers] = await Promise.all([
+    const [totalAgents, totalMatches, activeMatches, totalPlayers, earningsAgg] = await Promise.all([
       this.agentModel.countDocuments({ status: { $ne: 'disabled' } }),
       this.matchModel.countDocuments({ status: 'completed' }),
       this.activeMatches.size,
       this.agentModel.countDocuments({ 'stats.totalMatches': { $gt: 0 } }),
+      this.matchModel.aggregate([
+        { $match: { status: 'completed', 'result.winnerId': { $ne: null } } },
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: {
+                $subtract: [
+                  '$potAmount',
+                  { $add: [{ $floor: { $multiply: ['$potAmount', 0.05] } }, '$stakeAmount'] },
+                ],
+              },
+            },
+          },
+        },
+      ]),
     ]);
 
     return {
@@ -32,6 +48,7 @@ export class AgentApiPublicController {
       totalMatches,
       activeMatches,
       totalPlayers,
+      totalEarningsUsdc: earningsAgg[0]?.total ?? 0,
     };
   }
 
