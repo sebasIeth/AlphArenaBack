@@ -142,9 +142,4 @@ export class MatchmakingController {
     return { playingCount: count };
   }
 
-  @Get('auto-play-count')
-  async autoPlayCount() {
-    const count = await this.agentModel.countDocuments({ autoPlay: true });
-    return { autoPlayCount: count };
-  }
 }
