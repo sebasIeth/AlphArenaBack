@@ -39,7 +39,7 @@ export class ClaimService {
     }
 
     const code = randomBytes(4).toString('hex');
-    const challengeText = `Verifying agent ${agent.apiKeyPrefix} on AlphArena. Code: ${code}`;
+    const challengeText = `Verifying my agent "${agent.name}" (${agent.apiKeyPrefix}) on @_alphaarena. Code: ${code}`;
 
     agent.xVerificationChallenge = challengeText;
     agent.claimStatus = 'pending';

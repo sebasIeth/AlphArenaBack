@@ -16,11 +16,12 @@ export class LeaderboardService {
     if (gameType) filter.gameTypes = gameType;
 
     const agents = await this.agentModel.find(filter).sort({ eloRating: -1 }).limit(limit)
-      .select('name eloRating stats gameTypes userId createdAt').lean();
+      .select('name eloRating stats gameTypes userId createdAt xUsername claimStatus').lean();
 
     const ranked = agents.map((agent: any, index: number) => ({
       rank: index + 1, agentId: agent._id, name: agent.name, eloRating: agent.eloRating,
       stats: agent.stats, gameTypes: agent.gameTypes, userId: agent.userId,
+      xUsername: agent.xUsername || null, claimStatus: agent.claimStatus || null,
     }));
 
     return { leaderboard: ranked };
@@ -63,7 +64,7 @@ export class LeaderboardService {
   }
 
   async getAgentStats(id: string) {
-    const agent = await this.agentModel.findById(id).select('name eloRating stats gameTypes userId status createdAt').lean() as any;
+    const agent = await this.agentModel.findById(id).select('name eloRating stats gameTypes userId status createdAt xUsername claimStatus').lean() as any;
     if (!agent) throw new NotFoundException('Agent not found');
 
     const recentMatches = await this.matchModel.find({
@@ -97,6 +98,8 @@ export class LeaderboardService {
         id: agent._id, name: agent.name, eloRating: agent.eloRating,
         stats: agent.stats, gameTypes: agent.gameTypes, status: agent.status,
         owner: { userId: agent.userId, username: owner?.username ?? 'Unknown' },
+        xUsername: agent.xUsername || null,
+        claimStatus: agent.claimStatus || null,
         createdAt: agent.createdAt,
       },
       recentMatches: matchHistory,
