@@ -61,7 +61,7 @@ export class Match extends Document {
 
   @Prop({
     type: String,
-    enum: ['starting', 'active', 'completed', 'cancelled', 'error'],
+    enum: ['pending', 'starting', 'active', 'completed', 'cancelled', 'error'],
     default: 'starting',
   })
   status: string;

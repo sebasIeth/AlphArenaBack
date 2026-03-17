@@ -28,6 +28,15 @@ export class User extends Document {
   @Prop({ type: Date, default: null })
   resetPasswordExpires: Date | null;
 
+  @Prop({ type: String, default: null })
+  verificationCode: string | null;
+
+  @Prop({ type: Date, default: null })
+  verificationCodeExpires: Date | null;
+
+  @Prop({ default: false })
+  emailVerified: boolean;
+
   createdAt: Date;
   updatedAt: Date;
 }

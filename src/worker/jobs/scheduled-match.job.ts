@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { ScheduledMatch, Agent } from '../../database/schemas';
+import { ScheduledMatch, Agent, Match } from '../../database/schemas';
 import { OrchestratorService } from '../../orchestrator/orchestrator.service';
 import { MatchAgentInput } from '../../orchestrator/match-manager.service';
 
@@ -12,6 +12,7 @@ export class ScheduledMatchJob {
   constructor(
     @InjectModel(ScheduledMatch.name) private readonly scheduledMatchModel: Model<ScheduledMatch>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     private readonly orchestrator: OrchestratorService,
   ) {}
 
@@ -101,6 +102,14 @@ export class ScheduledMatchJob {
           openclawToken: agentB.openclawToken,
           openclawAgentId: agentB.openclawAgentId,
         };
+
+        // Transition placeholder match from 'pending' to 'starting' before execution
+        if (scheduled.matchId) {
+          await this.matchModel.updateOne(
+            { _id: scheduled.matchId, status: 'pending' },
+            { status: 'starting' },
+          );
+        }
 
         // Start the match via orchestrator, reusing the placeholder match doc if it exists
         const placeholderMatchId = scheduled.matchId || undefined;
