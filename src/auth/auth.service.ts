@@ -25,7 +25,7 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const { username, password, email } = dto;
+    const { username, password, email, verificationCode } = dto;
 
     const existingUsername = await this.userModel.findOne({ username });
     if (existingUsername) {
@@ -36,6 +36,20 @@ export class AuthService {
       const existingEmail = await this.userModel.findOne({ email });
       if (existingEmail) {
         throw new ConflictException('Email is already registered');
+      }
+
+      // Check email was verified via code
+      if (!verificationCode) {
+        throw new BadRequestException('Verification code is required');
+      }
+
+      const verification = await this.userModel.db.collection('email_verifications').findOne({
+        email,
+        code: verificationCode,
+        expires: { $gt: new Date() },
+      });
+      if (!verification) {
+        throw new BadRequestException('Invalid or expired verification code');
       }
     }
 
@@ -51,8 +65,14 @@ export class AuthService {
       walletAddress: account.address,
       walletPrivateKey: privKey,
       email: email ?? null,
+      emailVerified: !!email,
       balance: 0,
     });
+
+    // Clean up verification record
+    if (email) {
+      await this.userModel.db.collection('email_verifications').deleteOne({ email });
+    }
 
     const payload: AuthPayload = { userId: user._id.toString(), username: user.username };
     const token = this.generateToken(payload);
@@ -95,6 +115,53 @@ export class AuthService {
       return null;
     }
     return { user: this.sanitizeUser(user) };
+  }
+
+  async sendVerificationCode(email: string) {
+    // Check if email is already registered
+    const existing = await this.userModel.findOne({ email });
+    if (existing) {
+      throw new ConflictException('Email is already registered');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+
+    // Upsert pending verification
+    await this.userModel.db.collection('email_verifications').updateOne(
+      { email },
+      { $set: { email, code, expires, verified: false, updatedAt: new Date() } },
+      { upsert: true },
+    );
+
+    try {
+      await this.mailService.sendVerificationCodeEmail(email, email, code);
+    } catch {
+      this.logger.error(`Failed to send verification code to ${email}`);
+    }
+
+    return { message: 'Verification code sent to your email' };
+  }
+
+  async verifyCode(email: string, code: string) {
+    const doc = await this.userModel.db.collection('email_verifications').findOne({
+      email,
+      code,
+      expires: { $gt: new Date() },
+    });
+
+    if (!doc) {
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    await this.userModel.db.collection('email_verifications').updateOne(
+      { email },
+      { $set: { verified: true, updatedAt: new Date() } },
+    );
+
+    this.logger.log(`Email verified: ${email}`);
+
+    return { message: 'Email verified successfully' };
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
@@ -155,6 +222,7 @@ export class AuthService {
       username: user.username,
       walletAddress: user.walletAddress,
       email: user.email,
+      emailVerified: user.emailVerified ?? false,
       balance: user.balance,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

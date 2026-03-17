@@ -65,7 +65,7 @@ export class BettingService implements OnModuleInit {
     const match = await this.matchModel.findById(matchId).lean();
     if (!match) throw new NotFoundException('Match not found');
 
-    if (!['starting', 'active'].includes(match.status)) {
+    if (!['pending', 'starting', 'active'].includes(match.status)) {
       throw new BadRequestException('Betting is closed for this match');
     }
 
@@ -133,7 +133,7 @@ export class BettingService implements OnModuleInit {
     if (!match) throw new NotFoundException('Match not found');
 
     const pool = await this.calculatePool(matchId, match);
-    const isOpen = ['starting', 'active'].includes(match.status);
+    const isOpen = ['pending', 'starting', 'active'].includes(match.status);
     const isSettled = match.status === 'completed';
     const isRefunded = match.status === 'cancelled';
 
@@ -198,7 +198,7 @@ export class BettingService implements OnModuleInit {
     if (!match) throw new NotFoundException('Match not found');
 
     const pool = await this.calculatePool(matchId, match);
-    const isOpen = ['starting', 'active'].includes(match.status);
+    const isOpen = ['pending', 'starting', 'active'].includes(match.status);
 
     return {
       matchId,
@@ -448,10 +448,10 @@ export class BettingService implements OnModuleInit {
      INTERNAL: Get all agent IDs from a match
      ──────────────────────────────────────────────────────── */
   private getMatchAgentIds(match: any): string[] {
-    const ids: string[] = [];
-    if (match.agents?.a?.agentId) ids.push(match.agents.a.agentId.toString());
-    if (match.agents?.b?.agentId) ids.push(match.agents.b.agentId.toString());
-    return ids;
+    if (!match.agents) return [];
+    return Object.values(match.agents)
+      .filter((a: any) => a?.agentId)
+      .map((a: any) => a.agentId.toString());
   }
 
   /* ────────────────────────────────────────────────────────

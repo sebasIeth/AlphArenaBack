@@ -62,26 +62,24 @@ export class ScheduledMatchesService {
     }));
 
     // Create a placeholder Match so betting can open immediately
+    const sides = 'abcdefghijklmnopqrstuvwxyz';
+    const matchAgents: Record<string, { agentId: any; userId: any; name: string; eloAtStart: number }> = {};
+    agents.forEach((agent, i) => {
+      matchAgents[sides[i]] = {
+        agentId: agent._id,
+        userId: agent.userId,
+        name: agent.name,
+        eloAtStart: agent.eloRating,
+      };
+    });
+
     const matchDoc = await this.matchModel.create({
       gameType: dto.gameType,
       chain: matchChain,
-      agents: {
-        a: {
-          agentId: agents[0]._id,
-          userId: agents[0].userId,
-          name: agents[0].name,
-          eloAtStart: agents[0].eloRating,
-        },
-        b: {
-          agentId: agents[1]._id,
-          userId: agents[1].userId,
-          name: agents[1].name,
-          eloAtStart: agents[1].eloRating,
-        },
-      },
+      agents: matchAgents,
       stakeAmount: dto.stakeAmount,
-      potAmount: dto.stakeAmount * 2,
-      status: 'starting',
+      potAmount: dto.stakeAmount * agents.length,
+      status: 'pending',
     });
 
     const doc = await this.scheduledMatchModel.create({

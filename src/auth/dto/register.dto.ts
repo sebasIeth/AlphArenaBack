@@ -15,4 +15,8 @@ export class RegisterDto {
   @IsOptional()
   @IsEmail({}, { message: 'Invalid email address' })
   email?: string;
+
+  @IsOptional()
+  @IsString()
+  verificationCode?: string;
 }
