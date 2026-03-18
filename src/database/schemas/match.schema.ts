@@ -102,6 +102,10 @@ export class Match extends Document {
   @Prop({ type: MongooseSchema.Types.Mixed, default: null })
   pokerState: any;
 
+  /** Per-hand archive: [ { handNumber, holeCards: { a: Card[], b: Card[] }, result, winner } ] */
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  pokerHandHistories: any[];
+
   @Prop({ type: Date, default: null })
   turnStartedAt: Date;
 

@@ -1,10 +1,15 @@
 import { Controller, Get, Param, Query, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
 import { MatchesService } from './matches.service';
+import { RoomsService } from '../realtime/rooms.service';
 import { SkipThrottle } from '@nestjs/throttler';
 
+@SkipThrottle()
 @Controller('matches')
 export class MatchesController {
-  constructor(private readonly matchesService: MatchesService) {}
+  constructor(
+    private readonly matchesService: MatchesService,
+    private readonly rooms: RoomsService,
+  ) {}
 
   @Get()
   findAll(
@@ -18,6 +23,12 @@ export class MatchesController {
   @Get('active')
   findActive() {
     return this.matchesService.findActive();
+  }
+
+  @SkipThrottle()
+  @Get('viewers')
+  getViewers() {
+    return this.rooms.getAllViewerCounts();
   }
 
   @Get(':id')

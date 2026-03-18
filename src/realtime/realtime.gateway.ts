@@ -15,7 +15,7 @@ import { Model } from 'mongoose';
 import { ConfigService } from '../common/config/config.service';
 import { RoomsService } from './rooms.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
-import { Agent } from '../database/schemas';
+import { Agent, Match } from '../database/schemas';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -32,6 +32,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly rooms: RoomsService,
     private readonly humanMoveService: HumanMoveService,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(Match.name) private readonly matchModel: Model<Match>,
   ) {}
 
   handleConnection(client: Socket): void {
@@ -49,6 +50,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     try {
       const payload = jwt.verify(token, this.configService.jwtSecret) as { userId: string; username: string };
       (client as any).user = payload;
+      (client as any).role = (client.handshake.query.role as string) || 'spectator';
       this.rooms.registerClient(client);
       this.logger.log(`Client ${client.id} connected (user: ${payload.username})`);
     } catch {
@@ -63,15 +65,18 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     // Auto-join match room if matchId provided in query
     const matchId = client.handshake.query.matchId as string | undefined;
     if (matchId) {
+      this.ensureMatchPlayers(matchId);
       this.rooms.join(matchId, client);
       client.emit('message', {
         type: 'match:state',
         data: {
           matchId,
           subscribed: true,
-          viewers: this.rooms.getRoomSize(matchId),
+          viewers: this.rooms.getSpectatorCount(matchId),
         },
       });
+      // Re-send pending turn notification if this player's agent is waiting for a move
+      this.resendPendingTurn(matchId, client);
     }
   }
 
@@ -94,6 +99,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return;
     }
 
+    this.ensureMatchPlayers(data.matchId);
     this.rooms.join(data.matchId, client);
     this.logger.log(`Client ${client.id} subscribed to match ${data.matchId}`);
     client.emit('message', {
@@ -101,7 +107,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       data: {
         matchId: data.matchId,
         subscribed: true,
-        viewers: this.rooms.getRoomSize(data.matchId),
+        viewers: this.rooms.getSpectatorCount(data.matchId),
       },
     });
   }
@@ -160,5 +166,62 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     } else {
       client.emit('message', { type: 'error', data: { message: 'Failed to submit move.' } });
     }
+  }
+
+  /** Load match player userIds into RoomsService (fire-and-forget, idempotent) */
+  private ensureMatchPlayers(matchId: string): void {
+    this.matchModel.findById(matchId).select('agents.a.userId agents.b.userId').lean().then((match) => {
+      if (!match) return;
+      const userIds: string[] = [];
+      if (match.agents?.a?.userId) userIds.push(match.agents.a.userId.toString());
+      if (match.agents?.b?.userId) userIds.push(match.agents.b.userId.toString());
+      if (userIds.length > 0) this.rooms.setMatchPlayers(matchId, userIds);
+    }).catch(() => {});
+  }
+
+  /** Re-send match:your_turn if there's a pending human move for this match */
+  private resendPendingTurn(matchId: string, client: Socket): void {
+    const pendingSide = this.humanMoveService.getPendingSide(matchId);
+    if (!pendingSide) return;
+
+    const user = (client as any).user as { userId: string } | undefined;
+    if (!user) return;
+
+    // Check if this user owns the agent that needs to move
+    this.matchModel.findById(matchId).select('agents gameType currentTurn pokerState').lean().then(async (match) => {
+      if (!match) return;
+      const agentDoc = match.agents?.[pendingSide];
+      if (!agentDoc) return;
+
+      // Verify this user owns the agent whose turn it is
+      if (agentDoc.userId?.toString() !== user.userId) return;
+
+      this.logger.log(`Re-sending match:your_turn to reconnected player (match=${matchId}, side=${pendingSide})`);
+      const payload: Record<string, unknown> = {
+        matchId,
+        side: pendingSide,
+        currentTurn: pendingSide,
+        turnTimeoutMs: 20000,
+      };
+
+      // Add poker state if available
+      if (match.gameType === 'poker' && match.pokerState) {
+        const pk = match.pokerState as any;
+        if (pk.communityCards) payload.pokerCommunityCards = pk.communityCards;
+        if (pk.pot != null) payload.pokerPot = pk.pot;
+        if (pk.street) payload.pokerStreet = pk.street;
+        if (pk.handNumber != null) payload.pokerHandNumber = pk.handNumber;
+        if (pk.players) {
+          const side = pendingSide;
+          const myPlayer = pk.players[side];
+          if (myPlayer?.holeCards) payload.pokerHoleCards = myPlayer.holeCards;
+          if (pk.players.a?.stack != null && pk.players.b?.stack != null) {
+            payload.pokerPlayerStacks = { a: pk.players.a.stack, b: pk.players.b.stack };
+          }
+        }
+      }
+
+      client.emit('message', { type: 'match:your_turn', data: payload });
+    }).catch(() => {});
   }
 }
