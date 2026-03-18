@@ -265,8 +265,24 @@ export class PokerTurnControllerService {
 
     await this.persistPokerState(matchId, state);
 
-    // Emit hand result — only reveal cards on actual showdown, not on fold
-    const isShowdown = !!state.showdownResult;
+    // Save hand history with hole cards for replay (always reveal after hand ends)
+    const handHistory = {
+      handNumber: state.handNumber,
+      holeCards: {
+        a: state.players.a.holeCards,
+        b: state.players.b.holeCards,
+      },
+      communityCards: state.communityCards,
+      result: state.showdownResult ? 'showdown' : 'fold',
+      winner: state.winner,
+      pot: state.pot,
+    };
+    await this.matchModel.updateOne(
+      { _id: matchId },
+      { $push: { pokerHandHistories: handHistory } },
+    );
+
+    // Emit hand result — always include hole cards so spectators can see them on rewind
     this.eventBus.emit('match:move', {
       matchId,
       side: (state.winner ?? state.currentPlayerSide) as 'a' | 'b',
@@ -280,8 +296,9 @@ export class PokerTurnControllerService {
       pokerCommunityCards: state.communityCards,
       pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
       pokerHandNumber: state.handNumber,
-      pokerPlayers: isShowdown ? this.buildPokerPlayersWithCards(state) : this.buildPokerPlayersPublic(state),
+      pokerPlayers: this.buildPokerPlayersWithCards(state),
       pokerShowdownResult: state.showdownResult ?? null,
+      pokerHandResult: handHistory,
     });
 
     const matchOver = isMatchOver(state);
@@ -360,7 +377,7 @@ export class PokerTurnControllerService {
     try {
       await this.moveModel.create({
         matchId, agentId, side, moveNumber,
-        moveData: { row: 0, col: 0, pokerAction: action.action, pokerAmount: action.amount },
+        moveData: { row: 0, col: 0, pokerAction: action.action, pokerAmount: action.amount, pokerHandNumber: stateAfter.handNumber },
         boardStateAfter: [],
         scoreAfter: { a: stateAfter.players.a.stack, b: stateAfter.players.b.stack },
         thinkingTimeMs,

@@ -6,6 +6,8 @@ export class RoomsService {
   private readonly logger = new Logger(RoomsService.name);
   private readonly rooms = new Map<string, Set<Socket>>();
   private readonly allClients = new Set<Socket>();
+  /** userIds that are players (not spectators) in each match */
+  private readonly matchPlayers = new Map<string, Set<string>>();
 
   registerClient(client: Socket): void {
     this.allClients.add(client);
@@ -13,6 +15,10 @@ export class RoomsService {
 
   unregisterClient(client: Socket): void {
     this.allClients.delete(client);
+  }
+
+  setMatchPlayers(matchId: string, userIds: string[]): void {
+    this.matchPlayers.set(matchId, new Set(userIds));
   }
 
   broadcastAll(message: Record<string, unknown>): void {
@@ -36,6 +42,7 @@ export class RoomsService {
     }
     room.add(client);
     this.logger.debug(`Client ${client.id} joined room ${matchId} (size: ${room.size})`);
+    this.broadcastViewers(matchId);
   }
 
   leave(matchId: string, client: Socket): void {
@@ -44,9 +51,11 @@ export class RoomsService {
 
     room.delete(client);
     this.logger.debug(`Client ${client.id} left room ${matchId} (size: ${room.size})`);
+    this.broadcastViewers(matchId);
 
     if (room.size === 0) {
       this.rooms.delete(matchId);
+      this.matchPlayers.delete(matchId);
       this.logger.log(`Room ${matchId} removed (empty)`);
     }
   }
@@ -55,11 +64,33 @@ export class RoomsService {
     for (const [matchId, room] of this.rooms) {
       if (room.has(client)) {
         room.delete(client);
+        this.broadcastViewers(matchId);
         if (room.size === 0) {
           this.rooms.delete(matchId);
+          this.matchPlayers.delete(matchId);
         }
       }
     }
+  }
+
+  private broadcastViewers(matchId: string): void {
+    this.broadcast(matchId, {
+      type: 'match:viewers',
+      data: { matchId, viewers: this.getSpectatorCount(matchId) },
+    });
+  }
+
+  getSpectatorCount(matchId: string): number {
+    const room = this.rooms.get(matchId);
+    if (!room) return 0;
+    // Deduplicate by userId, only count spectators (exclude players from /play page)
+    const uniqueSpectators = new Set<string>();
+    for (const client of room) {
+      if ((client as any).role === 'player') continue;
+      const userId = (client as any).user?.userId;
+      if (userId) uniqueSpectators.add(userId);
+    }
+    return uniqueSpectators.size;
   }
 
   broadcast(matchId: string, message: Record<string, unknown>): void {
@@ -84,11 +115,21 @@ export class RoomsService {
     return this.rooms.get(matchId)?.size ?? 0;
   }
 
+  getAllViewerCounts(): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const matchId of this.rooms.keys()) {
+      const count = this.getSpectatorCount(matchId);
+      if (count > 0) counts[matchId] = count;
+    }
+    return counts;
+  }
+
   cleanup(matchId: string): void {
     const room = this.rooms.get(matchId);
     if (room) {
       this.logger.log(`Cleaning up room ${matchId} (${room.size} clients remaining)`);
       this.rooms.delete(matchId);
     }
+    this.matchPlayers.delete(matchId);
   }
 }

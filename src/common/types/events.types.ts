@@ -49,6 +49,7 @@ export interface MatchMoveEvent {
   pokerHandNumber?: number;
   pokerPlayers?: { seatIndex: number; side: string; stack: number; holeCards: { rank: string; suit: string }[]; currentBet: number; hasFolded: boolean; isAllIn: boolean; isDealer: boolean }[];
   pokerShowdownResult?: { winnerSide: string; winnerHand?: { rank: number; description: string }; loserHand?: { rank: number; description: string } } | null;
+  pokerHandResult?: { handNumber: number; holeCards: Record<string, { rank: string; suit: string }[]>; communityCards: { rank: string; suit: string }[]; result: string; winner: string | null; pot: number };
 }
 
 export interface MatchTimeoutEvent {

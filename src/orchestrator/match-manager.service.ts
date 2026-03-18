@@ -586,15 +586,27 @@ export class MatchManagerService {
     }
     this.eventBus.emit('match:started', startedPayload);
 
+    // Give human players time to reconnect their sockets before starting the game loop
+    const hasHumanPlayer = Object.values(matchState.agents).some((a: any) => a.type === 'human');
+    const startDelay = hasHumanPlayer ? 3000 : 0;
+
     let loopFn: Promise<void>;
     if (gameType === 'marrakech') {
-      loopFn = this.runMarrakechGameLoop(matchId);
+      loopFn = startDelay > 0
+        ? new Promise<void>(r => setTimeout(r, startDelay)).then(() => this.runMarrakechGameLoop(matchId))
+        : this.runMarrakechGameLoop(matchId);
     } else if (gameType === 'chess') {
-      loopFn = this.runChessGameLoop(matchId);
+      loopFn = startDelay > 0
+        ? new Promise<void>(r => setTimeout(r, startDelay)).then(() => this.runChessGameLoop(matchId))
+        : this.runChessGameLoop(matchId);
     } else if (gameType === 'poker') {
-      loopFn = this.runPokerGameLoop(matchId);
+      loopFn = startDelay > 0
+        ? new Promise<void>(r => setTimeout(r, startDelay)).then(() => this.runPokerGameLoop(matchId))
+        : this.runPokerGameLoop(matchId);
     } else {
-      loopFn = this.runGameLoop(matchId);
+      loopFn = startDelay > 0
+        ? new Promise<void>(r => setTimeout(r, startDelay)).then(() => this.runGameLoop(matchId))
+        : this.runGameLoop(matchId);
     }
 
     loopFn.catch((error: unknown) => {

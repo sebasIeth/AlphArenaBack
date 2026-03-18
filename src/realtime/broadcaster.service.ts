@@ -78,6 +78,7 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.pokerHandNumber != null) payload.pokerHandNumber = data.pokerHandNumber;
       if (data.pokerPlayers) payload.pokerPlayers = data.pokerPlayers;
       if (data.pokerShowdownResult !== undefined) payload.pokerShowdownResult = data.pokerShowdownResult;
+      if (data.pokerHandResult) payload.pokerHandResult = data.pokerHandResult;
       this.rooms.broadcast(data.matchId, { type: 'match:move', data: payload });
     };
 

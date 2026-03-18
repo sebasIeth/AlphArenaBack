@@ -3,9 +3,11 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { MatchesController } from './matches.controller';
 import { MatchesService } from './matches.service';
 import { Match, MatchSchema, MoveDoc, MoveSchema, Agent, AgentSchema } from '../database/schemas';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
+    RealtimeModule,
     MongooseModule.forFeature([
       { name: Match.name, schema: MatchSchema },
       { name: MoveDoc.name, schema: MoveSchema },
