@@ -925,7 +925,10 @@ export class MatchManagerService {
 
     try {
       await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
-      try { await this.settlement.refund(matchId); } catch {}
+      const erroredMatch = await this.matchModel.findById(matchId).lean();
+      if (erroredMatch?.txHashes?.escrow) {
+        try { await this.settlement.refund(matchId); } catch {}
+      }
       if (matchState) {
         await Promise.all(
           Object.values(matchState.agents).map((agentInfo) =>
@@ -951,11 +954,17 @@ export class MatchManagerService {
       const matchId = match._id.toString();
       this.logger.warn(`Cancelling stuck 'starting' match ${matchId}`);
       await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled', endedAt: new Date() });
-      await Promise.all([
-        this.agentModel.updateOne({ _id: match.agents.a.agentId, status: 'in_match' }, { status: 'idle' }),
-        this.agentModel.updateOne({ _id: match.agents.b.agentId, status: 'in_match' }, { status: 'idle' }),
-      ]);
-      try { await this.settlement.refund(matchId); } catch {}
+      const agentEntries = Object.values(match.agents || {}) as any[];
+      await Promise.all(
+        agentEntries
+          .filter((a) => a?.agentId)
+          .map((a) => this.agentModel.updateOne({ _id: a.agentId, status: 'in_match' }, { status: 'idle' })),
+      );
+      if (match.txHashes?.escrow) {
+        try { await this.settlement.refund(matchId); } catch {}
+      } else {
+        this.logger.log(`Skipping refund for match ${matchId} — no escrow was deposited`);
+      }
     }
 
     // 2. Recover matches with 'active' status
@@ -976,7 +985,9 @@ export class MatchManagerService {
         if (!agentDocA || !agentDocB) {
           this.logger.error(`Cannot recover match ${matchId}: agent doc(s) missing`);
           await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
-          try { await this.settlement.refund(matchId); } catch {}
+          if (match.txHashes?.escrow) {
+            try { await this.settlement.refund(matchId); } catch {}
+          }
           await Promise.all([
             this.agentModel.updateOne({ _id: match.agents.a.agentId }, { status: 'idle' }),
             this.agentModel.updateOne({ _id: match.agents.b.agentId }, { status: 'idle' }),
@@ -1196,7 +1207,9 @@ export class MatchManagerService {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`Failed to recover match ${matchId}: ${message}`);
         await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
-        try { await this.settlement.refund(matchId); } catch {}
+        if (match.txHashes?.escrow) {
+          try { await this.settlement.refund(matchId); } catch {}
+        }
         await Promise.all([
           this.agentModel.updateOne({ _id: match.agents.a.agentId }, { status: 'idle' }),
           this.agentModel.updateOne({ _id: match.agents.b.agentId }, { status: 'idle' }),

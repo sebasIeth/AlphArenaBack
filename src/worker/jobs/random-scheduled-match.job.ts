@@ -115,7 +115,7 @@ export class RandomScheduledMatchJob {
         color: COLORS[idx % COLORS.length],
       }));
 
-      const stake = picked[0].autoPlayStakeAmount || DEFAULT_STAKE;
+      const stake = DEFAULT_STAKE;
 
       // Create placeholder Match so betting opens immediately
       const matchDoc = await this.matchModel.create({

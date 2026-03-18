@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException, ConflictExc
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { randomBytes, createHash, randomUUID } from 'crypto';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { Agent, Match } from '../database/schemas';
 import { ActiveMatchesService } from '../orchestrator/active-matches.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
@@ -31,12 +32,17 @@ export class AgentApiService {
     const prefix = rawKey.substring(0, 11); // "ak_" + 8 hex chars
     const claimToken = randomUUID();
 
+    // Generate a dedicated wallet for this agent
+    const privKey = generatePrivateKey();
+    const account = privateKeyToAccount(privKey);
+
     const agent = await this.agentModel.create({
       userId: dto.userId ?? null as any,
       name: dto.name,
       type: 'pull',
       gameTypes: dto.gameTypes,
-      walletAddress: dto.walletAddress,
+      walletAddress: dto.walletAddress ?? account.address,
+      walletPrivateKey: privKey,
       apiKeyHash: hash,
       apiKeyPrefix: prefix,
       claimToken,
@@ -53,9 +59,10 @@ export class AgentApiService {
       apiKey: rawKey,
       apiKeyPrefix: prefix,
       claimToken,
-      claimUrl: `/v1/claims/${claimToken}`,
+      claimUrl: `https://app.alpharena.ai/claim/${claimToken}`,
       name: dto.name,
       gameTypes: dto.gameTypes,
+      walletAddress: agent.walletAddress,
     };
   }
 

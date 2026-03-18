@@ -5,6 +5,7 @@ import { OrchestratorModule } from '../orchestrator/orchestrator.module';
 import { MatchmakingModule } from '../matchmaking/matchmaking.module';
 import { LeaderboardModule } from '../leaderboard/leaderboard.module';
 import { ConfigModule } from '../common/config/config.module';
+import { SettlementModule } from '../settlement/settlement.module';
 import { AgentApiController } from './agent-api.controller';
 import { AgentApiBatchController } from './agent-api-batch.controller';
 import { AgentApiPublicController } from './agent-api-public.controller';
@@ -24,6 +25,7 @@ import { ApiKeyAuthGuard } from '../common/guards/api-key-auth.guard';
     forwardRef(() => MatchmakingModule),
     LeaderboardModule,
     ConfigModule,
+    forwardRef(() => SettlementModule),
   ],
   controllers: [
     AgentApiController,
