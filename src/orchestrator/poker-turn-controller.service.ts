@@ -179,18 +179,22 @@ export class PokerTurnControllerService {
         // Validate & normalize action
         const validatedAction = this.validateAction(actionResponse, legalActions, currentSide);
 
+        // Capture hand/street BEFORE applying action (applyAction may advance to next hand)
+        const handNumberBefore = state.handNumber;
+        const streetBefore = state.street;
+
         // Apply action to poker state
         const pokerAction: PokerAction = {
           type: validatedAction.action,
           amount: validatedAction.amount,
           playerSide: currentSide,
-          street: state.street,
+          street: streetBefore,
           timestamp: Date.now(),
         };
 
         state = applyAction(state, pokerAction);
 
-        // Emit match:move event
+        // Emit match:move event (use pre-action hand/street so moves stay in the correct hand)
         const moveNumber = state.actionHistory.length;
         this.eventBus.emit('match:move', {
           matchId,
@@ -201,15 +205,15 @@ export class PokerTurnControllerService {
           moveNumber,
           thinkingTimeMs,
           pokerAction: { type: validatedAction.action, amount: validatedAction.amount },
-          pokerStreet: state.street,
+          pokerStreet: streetBefore,
           pokerPot: state.pot,
           pokerCommunityCards: state.communityCards,
           pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
-          pokerHandNumber: state.handNumber,
+          pokerHandNumber: handNumberBefore,
           pokerPlayers: this.buildPokerPlayersPublic(state),
         });
 
-        await this.saveMove(matchId, agent.agentId, currentSide, moveNumber, validatedAction, state, thinkingTimeMs);
+        await this.saveMove(matchId, agent.agentId, currentSide, moveNumber, validatedAction, state, thinkingTimeMs, handNumberBefore, streetBefore);
         await this.persistPokerState(matchId, state);
 
         // Yield to event loop
@@ -373,11 +377,13 @@ export class PokerTurnControllerService {
     action: { action: PokerActionType; amount?: number },
     stateAfter: PokerGameState,
     thinkingTimeMs: number,
+    handNumber?: number,
+    street?: string,
   ): Promise<void> {
     try {
       await this.moveModel.create({
         matchId, agentId, side, moveNumber,
-        moveData: { row: 0, col: 0, pokerAction: action.action, pokerAmount: action.amount, pokerHandNumber: stateAfter.handNumber },
+        moveData: { row: 0, col: 0, pokerAction: action.action, pokerAmount: action.amount, pokerHandNumber: handNumber ?? stateAfter.handNumber, pokerStreet: street ?? stateAfter.street },
         boardStateAfter: [],
         scoreAfter: { a: stateAfter.players.a.stack, b: stateAfter.players.b.stack },
         thinkingTimeMs,

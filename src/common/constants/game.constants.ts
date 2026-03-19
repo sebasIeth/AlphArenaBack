@@ -21,9 +21,9 @@ export const PIECE = {
 
 export const GAME_TYPES = ['marrakech', 'chess', 'poker'] as const;
 
-export const POKER_SMALL_BLIND = 10;
-export const POKER_BIG_BLIND = 20;
-export const POKER_MAX_HANDS = 100;
+export const POKER_SMALL_BLIND = 20;
+export const POKER_BIG_BLIND = 40;
+export const POKER_MAX_HANDS = 50;
 
 export const CHESS_PIECE = {
   EMPTY: 0,
