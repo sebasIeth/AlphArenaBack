@@ -67,11 +67,15 @@ export class RandomScheduledMatchJob {
     for (let i = 0; i < slotsAvailable && i < 3; i++) {
       const [gameType, pool] = eligibleGames[Math.floor(Math.random() * eligibleGames.length)];
 
-      // Shuffle and pick 2 random agents
-      const shuffled = pool.sort(() => Math.random() - 0.5);
-      const picked = shuffled.slice(0, 2);
+      // Deduplicate pool by agent _id (same agent can appear if it supports multiple game types)
+      const unique = pool.filter(
+        (a, idx, arr) => arr.findIndex((b) => b._id.toString() === a._id.toString()) === idx,
+      );
+      if (unique.length < 2) continue;
 
-      // Allow same-user matches for the whitelisted harness bots
+      // Shuffle and pick 2 distinct agents
+      const shuffled = unique.sort(() => Math.random() - 0.5);
+      const picked = shuffled.slice(0, 2);
 
       // Check this exact pair doesn't already have a pending scheduled match
       const existingPair = await this.scheduledMatchModel.findOne({
