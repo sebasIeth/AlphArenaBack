@@ -383,7 +383,19 @@ export class PokerTurnControllerService {
     try {
       await this.moveModel.create({
         matchId, agentId, side, moveNumber,
-        moveData: { row: 0, col: 0, pokerAction: action.action, pokerAmount: action.amount, pokerHandNumber: handNumber ?? stateAfter.handNumber, pokerStreet: street ?? stateAfter.street },
+        moveData: {
+          row: 0, col: 0,
+          pokerAction: action.action,
+          pokerAmount: action.amount,
+          pokerHandNumber: handNumber ?? stateAfter.handNumber,
+          pokerStreet: street ?? stateAfter.street,
+          pokerCommunityCards: stateAfter.communityCards,
+          pokerPot: stateAfter.pot,
+          pokerPlayers: {
+            a: { stack: stateAfter.players.a.stack, currentBet: stateAfter.players.a.currentBet, hasFolded: stateAfter.players.a.hasFolded, isAllIn: stateAfter.players.a.isAllIn },
+            b: { stack: stateAfter.players.b.stack, currentBet: stateAfter.players.b.currentBet, hasFolded: stateAfter.players.b.hasFolded, isAllIn: stateAfter.players.b.isAllIn },
+          },
+        },
         boardStateAfter: [],
         scoreAfter: { a: stateAfter.players.a.stack, b: stateAfter.players.b.stack },
         thinkingTimeMs,
