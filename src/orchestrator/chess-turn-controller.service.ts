@@ -80,6 +80,15 @@ export class ChessTurnControllerService {
 
     const thinkingStart = Date.now();
 
+    // Notify spectators that this agent's turn has started
+    this.eventBus.emit('agent:thinking', {
+      matchId,
+      agentId: agent.agentId,
+      side: currentSide,
+      raw: '',
+      moveNumber: chessEngine.getMoveNumber(),
+    });
+
     try {
       let response: { move: ChessUciMove };
 

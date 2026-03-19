@@ -115,6 +115,15 @@ export class PokerTurnControllerService {
         const thinkingStart = Date.now();
         let actionResponse: PokerMoveResponse;
 
+        // Notify spectators that this agent's turn has started
+        this.eventBus.emit('agent:thinking', {
+          matchId,
+          agentId: agent.agentId,
+          side: currentSide,
+          raw: '',
+          moveNumber: state.actionHistory.length,
+        });
+
         try {
           if (agent.type === 'human' || agent.type === 'pull') {
             this.eventBus.emit('match:your_turn', {
