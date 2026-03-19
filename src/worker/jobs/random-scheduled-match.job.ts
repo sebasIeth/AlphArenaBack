@@ -18,6 +18,9 @@ const DEFAULT_STAKE = 0;
 /** Only these game types get auto-scheduled */
 const SCHEDULABLE_GAMES = ['chess', 'poker'];
 
+/** Only these agents are eligible for auto-scheduling (Ollama harness bots) */
+const ALLOWED_AGENT_NAMES = ['TobiasdevBot', 'Apolobot'];
+
 @Injectable()
 export class RandomScheduledMatchJob {
   private readonly logger = new Logger(RandomScheduledMatchJob.name);
@@ -37,14 +40,11 @@ export class RandomScheduledMatchJob {
     const slotsAvailable = MAX_PENDING_SCHEDULED - pendingCount;
     if (slotsAvailable <= 0) return;
 
-    // Find idle, non-human agents that have a working endpoint
+    // Find only the allowed Ollama harness agents
     const agents = await this.agentModel.find({
       status: 'idle',
       type: { $ne: 'human' },
-      $or: [
-        { endpointUrl: { $exists: true, $ne: '' } },
-        { openclawUrl: { $exists: true, $ne: '' } },
-      ],
+      name: { $in: ALLOWED_AGENT_NAMES },
     }).lean();
 
     if (agents.length < 2) return;
@@ -71,16 +71,7 @@ export class RandomScheduledMatchJob {
       const shuffled = pool.sort(() => Math.random() - 0.5);
       const picked = shuffled.slice(0, 2);
 
-      // Don't match agents from the same user
-      if (picked[0].userId.toString() === picked[1].userId.toString()) {
-        const alt = shuffled.find(
-          (a) =>
-            a._id.toString() !== picked[0]._id.toString() &&
-            a.userId.toString() !== picked[0].userId.toString(),
-        );
-        if (!alt) continue;
-        picked[1] = alt!;
-      }
+      // Allow same-user matches for the whitelisted harness bots
 
       // Check this exact pair doesn't already have a pending scheduled match
       const existingPair = await this.scheduledMatchModel.findOne({

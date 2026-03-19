@@ -32,12 +32,7 @@ export class ScheduledMatchJob {
         // Mark as starting to prevent double-execution
         await this.scheduledMatchModel.updateOne({ _id: id }, { status: 'starting' });
 
-        // Reject zero-stake matches
-        if (!scheduled.stakeAmount || scheduled.stakeAmount <= 0) {
-          this.logger.warn(`Scheduled match ${id}: stakeAmount is 0, skipping`);
-          await this.scheduledMatchModel.updateOne({ _id: id }, { status: 'cancelled', cancelReason: 'stakeAmount must be greater than 0' });
-          continue;
-        }
+        // Allow zero-stake matches (auto-scheduled free play)
 
         if (scheduled.agents.length < 2) {
           this.logger.warn(`Scheduled match ${id}: not enough agents (${scheduled.agents.length})`);
