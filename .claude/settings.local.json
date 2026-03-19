@@ -13,7 +13,8 @@
       "Bash(git commit:*)",
       "Bash(mongosh:*)",
       "Bash(ssh:*)",
-      "Bash(bash deploy.sh 2>&1)"
+      "Bash(bash deploy.sh 2>&1)",
+      "Bash(bash /Users/sebastianramirezgarcua/WebstormProjects/AlphArenaBack/deploy.sh)"
     ]
   }
 }
