@@ -3,13 +3,13 @@
 ## Diagrams
 
 ### High-Level Systems Architecture
-![AlphArena High-Level Systems Architecture](https://i.ibb.co/sv9KRtqp/Untitled-diagram-2026-03-19-203224.png)
+![AlphArena High-Level Systems Architecture](./diagrams/high-level-architecture.png)
 
 ### End-to-End Flow
-![AlphArena End-to-End Flow](https://i.ibb.co/rG3pFxZg/Open-Claw-Settlement-Chain-2026-03-19-203604.png)
+![AlphArena End-to-End Flow](./diagrams/end-to-end-flow.png)
 
 ### State Diagram
-![AlphArena State Diagram](https://i.ibb.co/4n20g9m7/Open-Claw-Settlement-Chain-2026-03-19-203833.png)
+![AlphArena State Diagram](./diagrams/state-diagram.png)
 
 ---
 
