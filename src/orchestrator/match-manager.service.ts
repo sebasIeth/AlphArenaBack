@@ -35,6 +35,7 @@ export interface MatchAgentInput {
   eloRating: number;
   type?: string;
   chain?: string;
+  token?: string;
   openclawUrl?: string;
   openclawToken?: string;
   openclawAgentId?: string;
@@ -156,7 +157,8 @@ export class MatchManagerService {
 
     const matchData = {
       gameType,
-      chain: agentA.chain || 'base',
+      chain: agentA.chain || 'solana',
+      token: agentA.token || 'ALPHA',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -222,7 +224,8 @@ export class MatchManagerService {
 
     const matchData = {
       gameType: 'marrakech',
-      chain: agentA.chain || 'base',
+      chain: agentA.chain || 'solana',
+      token: agentA.token || 'ALPHA',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -291,7 +294,8 @@ export class MatchManagerService {
 
     const matchData = {
       gameType: 'chess',
-      chain: agentA.chain || 'base',
+      chain: agentA.chain || 'solana',
+      token: agentA.token || 'ALPHA',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -383,7 +387,8 @@ export class MatchManagerService {
 
     const matchData = {
       gameType: 'poker',
-      chain: agents[0].chain || 'base',
+      chain: agents[0].chain || 'solana',
+      token: agents[0].token || 'ALPHA',
       agents: matchAgents,
       stakeAmount, potAmount, status: 'starting',
       currentBoard: [], currentTurn: 'a', moveCount: 0,
@@ -492,9 +497,10 @@ export class MatchManagerService {
 
     // Transfer stake from each agent wallet to platform, then escrow
     // Skip on-chain settlement for zero-stake matches
-    const matchChain = matchDoc.chain || 'base';
+    const matchChain = matchDoc.chain || 'solana';
+    const matchToken = matchDoc.token || 'ALPHA';
     if (matchDoc.stakeAmount > 0) {
-      const tokenDecimals = this.settlementRouter.getTokenDecimals(matchChain);
+      const tokenDecimals = this.settlementRouter.getTokenDecimals(matchChain, matchToken);
       const stakeAmountToken = BigInt(matchDoc.stakeAmount) * BigInt(10 ** tokenDecimals);
       const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** tokenDecimals);
       const platformWallet = this.settlementRouter.getPlatformWalletAddress(matchChain);
@@ -513,22 +519,27 @@ export class MatchManagerService {
       }
 
       try {
-        // Verify all private keys are present
-        const agentPrivKeys: Record<string, string> = {};
-        for (const [side] of agentEntries) {
-          const doc = agentDocsBySide[side]!;
-          const privKey = doc.walletPrivateKey ? decrypt(doc.walletPrivateKey) : null;
-          if (!privKey) {
-            throw new Error(`Missing agent wallet private key for side ${side}`);
-          }
-          agentPrivKeys[side] = privKey;
-        }
-
-        // Transfer stake from each agent to platform wallet
         const transferTxHashes: string[] = [];
-        for (const [side] of agentEntries) {
-          const txHash = await this.settlementRouter.transferTokenFromAgent(matchChain, agentPrivKeys[side], platformWallet, stakeAmountToken);
-          if (txHash) transferTxHashes.push(txHash);
+
+        if (matchToken === 'USDC') {
+          // USDC: already paid via x402 — funds are in platform wallet
+          this.logger.log(`USDC match ${matchId}: stake collected via x402`);
+        } else {
+          // ALPHA: transfer from each agent wallet to platform
+          const agentPrivKeys: Record<string, string> = {};
+          for (const [side] of agentEntries) {
+            const doc = agentDocsBySide[side]!;
+            const privKey = doc.walletPrivateKey ? decrypt(doc.walletPrivateKey) : null;
+            if (!privKey) {
+              throw new Error(`Missing agent wallet private key for side ${side}`);
+            }
+            agentPrivKeys[side] = privKey;
+          }
+
+          for (const [side] of agentEntries) {
+            const txHash = await this.settlementRouter.transferTokenFromAgent(matchChain, agentPrivKeys[side], platformWallet, stakeAmountToken, matchToken);
+            if (txHash) transferTxHashes.push(txHash);
+          }
         }
 
         // Escrow via smart contract (EVM) or implicit (Solana — transfers already done)
@@ -537,9 +548,10 @@ export class MatchManagerService {
         const escrowTxHash = await this.settlementRouter.escrow(
           matchChain, matchId, walletA, walletB, escrowAmount,
         );
-        // For Solana, store the last transfer tx as the escrow hash
-        const storedEscrowHash = escrowTxHash || transferTxHashes[transferTxHashes.length - 1] || null;
-        await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': storedEscrowHash });
+        // Store all escrow tx hashes (agent transfers + contract escrow if EVM)
+        const allEscrowHashes = [...transferTxHashes];
+        if (escrowTxHash) allEscrowHashes.push(escrowTxHash);
+        await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': allEscrowHashes });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`Escrow failed for match ${matchId}: ${message}`);

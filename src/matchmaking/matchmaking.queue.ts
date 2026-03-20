@@ -14,6 +14,7 @@ export interface QueueEntryData {
   status: QueueEntryStatus;
   joinedAt: Date;
   agentType?: string;
+  token?: string;
 }
 
 @Injectable()

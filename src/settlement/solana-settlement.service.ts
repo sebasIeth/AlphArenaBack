@@ -16,13 +16,21 @@ import {
 } from '@solana/spl-token';
 import * as bs58 from 'bs58';
 
+export type SolanaTokenSymbol = 'ALPHA' | 'USDC';
+
+interface TokenConfig {
+  mint: PublicKey;
+  decimals: number;
+}
+
 @Injectable()
 export class SolanaSettlementService implements OnModuleInit {
   private readonly logger = new Logger(SolanaSettlementService.name);
   private connection: Connection | null = null;
   private platformKeypair: Keypair | null = null;
-  private tokenMint: PublicKey | null = null;
-  private tokenDecimals: number = 6;
+  private feeKeypair: Keypair | null = null;
+  private feeWalletAddress: string | null = null;
+  private tokens: Map<string, TokenConfig> = new Map();
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -33,11 +41,11 @@ export class SolanaSettlementService implements OnModuleInit {
   private async start(): Promise<void> {
     const rpcUrl = this.configService.solanaRpcUrl;
     const privateKey = this.configService.solanaPrivateKey;
-    const tokenMint = this.configService.solanaTokenMint;
+    const alphaMint = this.configService.solanaAlphaMint;
 
-    if (!rpcUrl || !privateKey || !tokenMint) {
+    if (!rpcUrl || !privateKey) {
       this.logger.warn(
-        'Solana configuration incomplete (SOLANA_RPC_URL / SOLANA_PRIVATE_KEY / SOLANA_TOKEN_MINT). ' +
+        'Solana configuration incomplete (SOLANA_RPC_URL / SOLANA_PRIVATE_KEY). ' +
           'Solana settlement service running in no-op mode.',
       );
       return;
@@ -46,39 +54,100 @@ export class SolanaSettlementService implements OnModuleInit {
     try {
       this.connection = new Connection(rpcUrl, 'confirmed');
       this.platformKeypair = Keypair.fromSecretKey(bs58.default.decode(privateKey));
-      this.tokenMint = new PublicKey(tokenMint);
 
-      // Read actual decimals from the mint account
-      const mintInfo = await getMint(this.connection, this.tokenMint);
-      this.tokenDecimals = mintInfo.decimals;
+      // Fee wallet
+      const feeWalletKey = this.configService.solanaFeeWalletKey;
+      if (feeWalletKey) {
+        this.feeKeypair = Keypair.fromSecretKey(bs58.default.decode(feeWalletKey));
+        this.feeWalletAddress = this.feeKeypair.publicKey.toBase58();
+        this.logger.log(`Fee wallet: ${this.feeWalletAddress}`);
+      } else if (this.configService.solanaFeeWallet) {
+        this.feeWalletAddress = this.configService.solanaFeeWallet;
+        this.logger.log(`Fee wallet (receive-only): ${this.feeWalletAddress}`);
+      }
+
+      // Register ALPHA token
+      if (alphaMint) {
+        const mint = new PublicKey(alphaMint);
+        const mintInfo = await getMint(this.connection, mint);
+        this.tokens.set('ALPHA', { mint, decimals: mintInfo.decimals });
+        this.logger.log(`ALPHA token: ${alphaMint} (${mintInfo.decimals} decimals)`);
+      }
+
+      // Register USDC token
+      const usdcMint = this.configService.solanaUsdcMint;
+      if (usdcMint) {
+        const mint = new PublicKey(usdcMint);
+        const mintInfo = await getMint(this.connection, mint);
+        this.tokens.set('USDC', { mint, decimals: mintInfo.decimals });
+        this.logger.log(`USDC token: ${usdcMint} (${mintInfo.decimals} decimals)`);
+      }
 
       this.logger.log(
-        `Solana settlement service started — mint=${tokenMint}, decimals=${this.tokenDecimals}, account=${this.platformKeypair.publicKey.toBase58()}`,
+        `Solana settlement started — tokens: [${[...this.tokens.keys()].join(', ')}], platform: ${this.platformKeypair.publicKey.toBase58()}`,
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to initialize Solana settlement: ${message}`);
       this.connection = null;
       this.platformKeypair = null;
-      this.tokenMint = null;
     }
   }
 
   private isReady(): boolean {
-    return this.connection !== null && this.platformKeypair !== null && this.tokenMint !== null;
+    return this.connection !== null && this.platformKeypair !== null;
+  }
+
+  private getToken(symbol: string): TokenConfig | null {
+    return this.tokens.get(symbol) ?? null;
   }
 
   /**
-   * Transfer SPL tokens from an agent wallet to a destination address.
-   * The agent's secret key is provided as a base58 string.
+   * Resolve a token by symbol or mint address.
+   */
+  private resolveToken(tokenMintOrSymbol: string): TokenConfig | null {
+    // Try as symbol first
+    const bySymbol = this.tokens.get(tokenMintOrSymbol);
+    if (bySymbol) return bySymbol;
+    // Try as mint address
+    for (const config of this.tokens.values()) {
+      if (config.mint.toBase58() === tokenMintOrSymbol) return config;
+    }
+    return null;
+  }
+
+  /**
+   * Get token decimals for a given token symbol or mint.
+   */
+  getTokenDecimals(tokenMintOrSymbol: string = 'ALPHA'): number {
+    return this.resolveToken(tokenMintOrSymbol)?.decimals ?? 6;
+  }
+
+  /**
+   * Get the mint address for a token symbol.
+   */
+  getTokenMint(symbol: string): string | null {
+    return this.getToken(symbol)?.mint.toBase58() ?? null;
+  }
+
+  /**
+   * Transfer SPL tokens from an agent wallet to a destination.
+   * Platform wallet pays tx fees.
    */
   async transferTokenFromAgent(
     agentSecretKeyBase58: string,
     to: string,
     amount: bigint,
+    tokenMintOrSymbol: string = 'ALPHA',
   ): Promise<string | null> {
     if (!this.isReady()) {
-      this.logger.warn('transferTokenFromAgent skipped — Solana settlement not initialised');
+      this.logger.warn('transferTokenFromAgent skipped — not initialised');
+      return null;
+    }
+
+    const token = this.resolveToken(tokenMintOrSymbol);
+    if (!token) {
+      this.logger.error(`Unknown token: ${tokenMintOrSymbol}`);
       return null;
     }
 
@@ -86,109 +155,102 @@ export class SolanaSettlementService implements OnModuleInit {
     const toPublicKey = new PublicKey(to);
 
     this.logger.log(
-      `Transferring SPL token from agent ${agentKeypair.publicKey.toBase58()} to ${to}, amount=${amount.toString()}`,
+      `Transfer ${tokenMintOrSymbol} from agent ${agentKeypair.publicKey.toBase58()} to ${to}, amount=${amount}`,
     );
 
-    // Get or create ATAs — platform wallet pays rent for destination ATA
     const sourceAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!,
-      this.platformKeypair!, // payer for ATA creation
-      this.tokenMint!,
-      agentKeypair.publicKey,
+      this.connection!, this.platformKeypair!, token.mint, agentKeypair.publicKey,
     );
-
     const destAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!,
-      this.platformKeypair!, // payer for ATA creation
-      this.tokenMint!,
-      toPublicKey,
+      this.connection!, this.platformKeypair!, token.mint, toPublicKey,
     );
 
-    // Platform pays tx fee, agent signs as token authority
     const tx = new Transaction().add(
-      createTransferInstruction(
-        sourceAta.address,
-        destAta.address,
-        agentKeypair.publicKey, // owner/authority of source
-        amount,
-      ),
+      createTransferInstruction(sourceAta.address, destAta.address, agentKeypair.publicKey, amount),
     );
     const txSig = await sendAndConfirmTransaction(
-      this.connection!,
-      tx,
-      [this.platformKeypair!, agentKeypair], // platform=feePayer, agent=authority
+      this.connection!, tx, [this.platformKeypair!, agentKeypair],
     );
 
-    this.logger.log(`SPL token transfer confirmed: txSig=${txSig}`);
+    this.logger.log(`Transfer confirmed: ${txSig}`);
     return txSig;
   }
 
   /**
-   * Transfer SPL tokens from the platform wallet to a destination address.
+   * Transfer SPL tokens from the platform wallet to a destination.
    */
   async transferTokenFromPlatform(
     to: string,
     amount: bigint,
+    tokenMintOrSymbol: string = 'ALPHA',
   ): Promise<string | null> {
     if (!this.isReady()) {
-      this.logger.warn('transferTokenFromPlatform skipped — Solana settlement not initialised');
+      this.logger.warn('transferTokenFromPlatform skipped — not initialised');
+      return null;
+    }
+
+    const token = this.resolveToken(tokenMintOrSymbol);
+    if (!token) {
+      this.logger.error(`Unknown token: ${tokenMintOrSymbol}`);
       return null;
     }
 
     const toPublicKey = new PublicKey(to);
 
     this.logger.log(
-      `Transferring SPL token from platform ${this.platformKeypair!.publicKey.toBase58()} to ${to}, amount=${amount.toString()}`,
+      `Transfer ${tokenMintOrSymbol} from platform to ${to}, amount=${amount}`,
     );
 
     const sourceAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!,
-      this.platformKeypair!,
-      this.tokenMint!,
-      this.platformKeypair!.publicKey,
+      this.connection!, this.platformKeypair!, token.mint, this.platformKeypair!.publicKey,
     );
-
     const destAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!,
-      this.platformKeypair!,
-      this.tokenMint!,
-      toPublicKey,
+      this.connection!, this.platformKeypair!, token.mint, toPublicKey,
     );
 
     const txSig = await transfer(
-      this.connection!,
-      this.platformKeypair!, // payer
-      sourceAta.address,
-      destAta.address,
-      this.platformKeypair!, // owner/authority
-      amount,
+      this.connection!, this.platformKeypair!, sourceAta.address, destAta.address,
+      this.platformKeypair!, amount,
     );
 
-    this.logger.log(`SPL platform transfer confirmed: txSig=${txSig}`);
+    this.logger.log(`Platform transfer confirmed: ${txSig}`);
     return txSig;
   }
 
   /**
-   * Read SPL token balance for an address.
-   * Returns a human-readable string (e.g. "100.5").
+   * Send platform fee to the dedicated fee wallet.
    */
-  async getAgentTokenBalance(walletAddress: string): Promise<string> {
+  async sendFeeToFeeWallet(
+    amount: bigint,
+    tokenMintOrSymbol: string = 'ALPHA',
+  ): Promise<string | null> {
+    if (!this.feeWalletAddress) {
+      this.logger.warn('No fee wallet configured, fee stays in platform wallet');
+      return null;
+    }
+    return this.transferTokenFromPlatform(this.feeWalletAddress, amount, tokenMintOrSymbol);
+  }
+
+  /**
+   * Read SPL token balance for an address.
+   */
+  async getAgentTokenBalance(walletAddress: string, tokenMintOrSymbol: string = 'ALPHA'): Promise<string> {
     if (!this.isReady()) return '0';
+
+    const token = this.resolveToken(tokenMintOrSymbol);
+    if (!token) return '0';
 
     try {
       const owner = new PublicKey(walletAddress);
       const ata = await getOrCreateAssociatedTokenAccount(
-        this.connection!,
-        this.platformKeypair!,
-        this.tokenMint!,
-        owner,
+        this.connection!, this.platformKeypair!, token.mint, owner,
       );
       const accountInfo = await getAccount(this.connection!, ata.address);
       const rawBalance = accountInfo.amount;
-      const divisor = BigInt(10 ** this.tokenDecimals);
+      const divisor = BigInt(10 ** token.decimals);
       const whole = rawBalance / divisor;
       const fraction = rawBalance % divisor;
-      const fractionStr = fraction.toString().padStart(this.tokenDecimals, '0').replace(/0+$/, '');
+      const fractionStr = fraction.toString().padStart(token.decimals, '0').replace(/0+$/, '');
       return fractionStr ? `${whole}.${fractionStr}` : whole.toString();
     } catch {
       return '0';
@@ -196,11 +258,10 @@ export class SolanaSettlementService implements OnModuleInit {
   }
 
   /**
-   * Read SOL balance for an address (needed for tx fees).
+   * Read SOL balance for an address.
    */
   async getAgentSolBalance(walletAddress: string): Promise<string> {
     if (!this.connection) return '0';
-
     try {
       const pubkey = new PublicKey(walletAddress);
       const lamports = await this.connection.getBalance(pubkey);
@@ -210,17 +271,15 @@ export class SolanaSettlementService implements OnModuleInit {
     }
   }
 
-  /**
-   * Get the platform wallet address (base58).
-   */
   getPlatformWalletAddress(): string | null {
     return this.platformKeypair?.publicKey.toBase58() ?? null;
   }
 
-  /**
-   * Get the SPL token decimals (read from mint on init).
-   */
-  getTokenDecimals(): number {
-    return this.tokenDecimals;
+  getFeeWalletAddress(): string | null {
+    return this.feeWalletAddress;
+  }
+
+  getSupportedTokens(): string[] {
+    return [...this.tokens.keys()];
   }
 }

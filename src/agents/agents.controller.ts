@@ -115,13 +115,14 @@ export class AgentsController {
     if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet');
 
-    const chain = agent.chain || 'base';
-    const [alpha, eth] = await Promise.all([
-      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress),
+    const chain = agent.chain || 'solana';
+    const [alpha, usdc, eth] = await Promise.all([
+      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'ALPHA'),
+      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'USDC'),
       this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress),
     ]);
 
-    return { walletAddress: agent.walletAddress, alpha, eth, chain };
+    return { walletAddress: agent.walletAddress, alpha, usdc, eth, chain };
   }
 
   @Post(':id/withdraw')

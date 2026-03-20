@@ -45,16 +45,17 @@ export class RandomScheduledMatchJob {
 
     const picked = uniqueAgents.slice(0, 2);
 
-    // Check if either agent is already in an active/starting/pending match (use ObjectId, not string)
+    // Check if either agent name is already in an active/starting/pending match
+    const pickedNames = picked.map((a) => a.name);
     const activeMatch = await this.matchModel.findOne({
       status: { $in: ['active', 'starting', 'pending'] },
       $or: [
-        { 'agents.a.agentId': { $in: [picked[0]._id, picked[1]._id] } },
-        { 'agents.b.agentId': { $in: [picked[0]._id, picked[1]._id] } },
+        { 'agents.a.name': { $in: pickedNames } },
+        { 'agents.b.name': { $in: pickedNames } },
       ],
     });
     if (activeMatch) {
-      this.logger.debug(`Skipping: agents already in match ${activeMatch._id} (status: ${activeMatch.status})`);
+      this.logger.debug(`Skipping: agent already in match ${activeMatch._id} (status: ${activeMatch.status})`);
       return;
     }
 

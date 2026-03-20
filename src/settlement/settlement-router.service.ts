@@ -5,6 +5,8 @@ import { SolanaSettlementService } from './solana-settlement.service';
 /**
  * Chain-agnostic facade that routes settlement operations to the
  * appropriate chain-specific service (EVM or Solana).
+ *
+ * For Solana, all methods accept an optional `token` param (default 'ALPHA').
  */
 @Injectable()
 export class SettlementRouterService {
@@ -15,59 +17,60 @@ export class SettlementRouterService {
     private readonly solanaSettlement: SolanaSettlementService,
   ) {}
 
-  /**
-   * Returns token decimals for the given chain.
-   * EVM chains use 18 decimals (USDC on Base), Solana reads from mint (typically 6 or 9).
-   */
-  getTokenDecimals(chain: string): number {
+  getTokenDecimals(chain: string, token: string = 'ALPHA'): number {
     if (chain === 'solana') {
-      return this.solanaSettlement.getTokenDecimals();
+      return this.solanaSettlement.getTokenDecimals(token);
     }
     return this.evmSettlement.getUsdcDecimals();
   }
 
-  /**
-   * Transfer tokens from an agent wallet to a destination.
-   */
   async transferTokenFromAgent(
     chain: string,
     agentPrivateKey: string,
     to: string,
     amount: bigint,
+    token: string = 'ALPHA',
   ): Promise<string | null> {
     if (chain === 'solana') {
-      return this.solanaSettlement.transferTokenFromAgent(agentPrivateKey, to, amount);
+      return this.solanaSettlement.transferTokenFromAgent(agentPrivateKey, to, amount, token);
     }
     return this.evmSettlement.transferUsdcFromAgent(agentPrivateKey, to, amount);
   }
 
-  /**
-   * Transfer tokens from the platform wallet to a destination.
-   */
   async transferTokenFromPlatform(
     chain: string,
     to: string,
     amount: bigint,
+    token: string = 'ALPHA',
   ): Promise<string | null> {
     if (chain === 'solana') {
-      return this.solanaSettlement.transferTokenFromPlatform(to, amount);
+      return this.solanaSettlement.transferTokenFromPlatform(to, amount, token);
     }
     return this.evmSettlement.transferUsdcFromPlatform(to, amount);
   }
 
   /**
-   * Get token balance for an agent.
+   * Send fee to the dedicated fee wallet.
    */
-  async getAgentTokenBalance(chain: string, walletAddress: string): Promise<string> {
+  async sendFee(
+    chain: string,
+    amount: bigint,
+    token: string = 'ALPHA',
+  ): Promise<string | null> {
     if (chain === 'solana') {
-      return this.solanaSettlement.getAgentTokenBalance(walletAddress);
+      return this.solanaSettlement.sendFeeToFeeWallet(amount, token);
+    }
+    // EVM: fee stays in platform wallet (no separate fee wallet yet)
+    return null;
+  }
+
+  async getAgentTokenBalance(chain: string, walletAddress: string, token: string = 'ALPHA'): Promise<string> {
+    if (chain === 'solana') {
+      return this.solanaSettlement.getAgentTokenBalance(walletAddress, token);
     }
     return this.evmSettlement.getAgentUsdcBalance(walletAddress);
   }
 
-  /**
-   * Get native balance (gas token) for an agent.
-   */
   async getAgentNativeBalance(chain: string, walletAddress: string): Promise<string> {
     if (chain === 'solana') {
       return this.solanaSettlement.getAgentSolBalance(walletAddress);
@@ -75,9 +78,6 @@ export class SettlementRouterService {
     return this.evmSettlement.getAgentEthBalance(walletAddress);
   }
 
-  /**
-   * Get the platform wallet address for the given chain.
-   */
   getPlatformWalletAddress(chain: string): string | null {
     if (chain === 'solana') {
       return this.solanaSettlement.getPlatformWalletAddress();
@@ -85,10 +85,13 @@ export class SettlementRouterService {
     return this.evmSettlement.getPlatformWalletAddress();
   }
 
-  /**
-   * Escrow funds via the Arena smart contract (EVM only).
-   * For Solana, the agent-to-platform transfers act as escrow — this is a no-op.
-   */
+  getFeeWalletAddress(chain: string): string | null {
+    if (chain === 'solana') {
+      return this.solanaSettlement.getFeeWalletAddress();
+    }
+    return null;
+  }
+
   async escrow(
     chain: string,
     matchId: string,
@@ -97,45 +100,39 @@ export class SettlementRouterService {
     escrowAmount: bigint,
   ): Promise<string | null> {
     if (chain === 'solana') {
-      // No smart contract on Solana — the agent transfers ARE the escrow
       this.logger.log(`Solana escrow is implicit (agent transfers) for match ${matchId}`);
       return null;
     }
     return this.evmSettlement.escrow(matchId, agentAAddress, agentBAddress, escrowAmount);
   }
 
-  /**
-   * Release payout via the Arena smart contract (EVM) or direct transfer (Solana).
-   */
   async payout(
     chain: string,
     matchId: string,
     winnerAddress: string,
     amount: bigint,
+    token: string = 'ALPHA',
   ): Promise<string | null> {
     if (chain === 'solana') {
-      return this.solanaSettlement.transferTokenFromPlatform(winnerAddress, amount);
+      return this.solanaSettlement.transferTokenFromPlatform(winnerAddress, amount, token);
     }
     return this.evmSettlement.payout(matchId, winnerAddress, amount);
   }
 
-  /**
-   * Refund match via the Arena smart contract (EVM) or direct transfers (Solana).
-   * For Solana, caller must handle individual refund transfers.
-   */
   async refund(
     chain: string,
     matchId: string,
     refundTargets?: Array<{ address: string; amount: bigint }>,
+    token: string = 'ALPHA',
   ): Promise<string | null> {
     if (chain === 'solana') {
       if (!refundTargets?.length) {
-        this.logger.warn(`Solana refund for match ${matchId} — no refund targets provided`);
+        this.logger.warn(`Solana refund for match ${matchId} — no refund targets`);
         return null;
       }
       let lastTxSig: string | null = null;
       for (const target of refundTargets) {
-        lastTxSig = await this.solanaSettlement.transferTokenFromPlatform(target.address, target.amount);
+        lastTxSig = await this.solanaSettlement.transferTokenFromPlatform(target.address, target.amount, token);
       }
       return lastTxSig;
     }

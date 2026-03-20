@@ -115,8 +115,20 @@ export class ConfigService {
     return process.env.SOLANA_PRIVATE_KEY;
   }
 
-  get solanaTokenMint(): string | undefined {
-    return process.env.SOLANA_TOKEN_MINT;
+  get solanaAlphaMint(): string | undefined {
+    return process.env.SOLANA_ALPHA_MINT;
+  }
+
+  get solanaUsdcMint(): string | undefined {
+    return process.env.SOLANA_USDC_MINT;
+  }
+
+  get solanaFeeWallet(): string | undefined {
+    return process.env.SOLANA_FEE_WALLET;
+  }
+
+  get solanaFeeWalletKey(): string | undefined {
+    return process.env.SOLANA_FEE_WALLET_KEY;
   }
 
   private getRequired(key: string): string {

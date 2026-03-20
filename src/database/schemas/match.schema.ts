@@ -47,8 +47,11 @@ export class Match extends Document {
   @Prop({ required: true })
   gameType: string;
 
-  @Prop({ type: String, default: 'base' })
+  @Prop({ type: String, default: 'solana' })
   chain: string;
+
+  @Prop({ type: String, default: 'ALPHA' })
+  token: string;
 
   @Prop({ type: MongooseSchema.Types.Mixed, required: true })
   agents: Record<string, MatchAgentSubDoc>;
@@ -88,7 +91,7 @@ export class Match extends Document {
     type: Object,
     default: () => ({ escrow: null, payout: null }),
   })
-  txHashes: { escrow: string; payout: string };
+  txHashes: { escrow: string[]; payout: string; fee: string };
 
   @Prop({ type: MongooseSchema.Types.Mixed, default: null })
   scores: Record<string, number>;

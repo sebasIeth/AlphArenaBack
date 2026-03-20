@@ -6,15 +6,17 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
 import { Agent, Match } from '../database/schemas';
-import { IsString, MinLength, IsNumber, Min, Max, IsIn } from 'class-validator';
+import { IsString, MinLength, IsNumber, Min, Max, IsIn, IsOptional } from 'class-validator';
 import { MIN_STAKE, MAX_STAKE } from '../common/constants/game.constants';
 import { SettlementService } from '../settlement/settlement.service';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
+import { X402StakeController } from '../settlement/x402-stake.controller';
 
 class JoinQueueDto {
   @IsString() @MinLength(1) agentId: string;
   @IsNumber() @Min(MIN_STAKE) @Max(MAX_STAKE) stakeAmount: number;
-  @IsIn(['marrakech', 'chess', 'poker']) gameType: string;
+  @IsString() @MinLength(1) gameType: string;
+  @IsOptional() @IsIn(['ALPHA', 'USDC']) token?: string;
 }
 
 class CancelQueueDto {
@@ -30,6 +32,7 @@ export class MatchmakingController {
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     private readonly settlement: SettlementService,
     private readonly settlementRouter: SettlementRouterService,
+    private readonly x402Stake: X402StakeController,
   ) {}
 
   @Post('join')
@@ -43,27 +46,33 @@ export class MatchmakingController {
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet. Please recreate the agent.');
 
     // Verify agent wallet has sufficient on-chain balance (skip for zero-stake)
+    const matchToken = dto.token || 'ALPHA';
     if (dto.stakeAmount > 0) {
-      const chain = agent.chain || 'base';
-      const [tokenBalance, nativeBalance] = await Promise.all([
-        this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress),
-        this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress),
-      ]);
-
-      if (parseFloat(tokenBalance) < dto.stakeAmount) {
-        const tokenName = chain === 'solana' ? 'ALPHA' : 'USDC';
-        throw new BadRequestException(
-          `Insufficient ${tokenName} balance. Agent has ${tokenBalance} but needs ${dto.stakeAmount}. Deposit to ${agent.walletAddress}`,
-        );
-      }
-
-      // Solana: platform wallet pays tx fees, agents don't need SOL
-      if (chain !== 'solana') {
-        const minNative = chain === 'celo' ? 0.0001 : 0.0001;
-        const nativeName = chain === 'celo' ? 'CELO' : 'ETH';
-        if (parseFloat(nativeBalance) < minNative) {
+      if (matchToken === 'USDC') {
+        // USDC: always requires x402 pre-payment
+        const x402Payment = this.x402Stake.getVerifiedPayment(dto.agentId);
+        if (!x402Payment) {
           throw new BadRequestException(
-            `Insufficient ${nativeName} for gas. Agent has ${nativeBalance} but needs at least ${minNative}. Deposit to ${agent.walletAddress}`,
+            'USDC matches require x402 payment. POST to /x402/stake first, pay the USDC, then join the queue.',
+          );
+        }
+        if (x402Payment.amount < dto.stakeAmount) {
+          throw new BadRequestException(
+            `x402 payment insufficient: paid ${x402Payment.amount} USDC but stake requires ${dto.stakeAmount}`,
+          );
+        }
+        if (x402Payment.gameType !== dto.gameType) {
+          throw new BadRequestException(
+            `x402 payment was for ${x402Payment.gameType} but trying to join ${dto.gameType}`,
+          );
+        }
+      } else {
+        // ALPHA: direct balance check
+        const chain = agent.chain || 'solana';
+        const tokenBalance = await this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, matchToken);
+        if (parseFloat(tokenBalance) < dto.stakeAmount) {
+          throw new BadRequestException(
+            `Insufficient ${matchToken} balance. Agent has ${tokenBalance} but needs ${dto.stakeAmount}. Deposit to ${agent.walletAddress}`,
           );
         }
       }
@@ -73,8 +82,8 @@ export class MatchmakingController {
     await agent.save();
 
     try {
-      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type);
-      return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: dto.gameType, stakeAmount: dto.stakeAmount };
+      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type, matchToken);
+      return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: dto.gameType, stakeAmount: dto.stakeAmount, token: matchToken };
     } catch (err) {
       agent.status = 'idle';
       await agent.save();
