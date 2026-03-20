@@ -33,4 +33,8 @@ export class CreateAgentDto {
   @ArrayMinSize(1, { message: 'At least one game type is required' })
   @IsIn(['marrakech', 'chess', 'poker'], { each: true })
   gameTypes: string[];
+
+  @IsOptional()
+  @IsIn(['base', 'celo', 'solana'], { message: 'Chain must be "base", "celo", or "solana"' })
+  chain?: string;
 }

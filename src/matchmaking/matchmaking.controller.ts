@@ -9,6 +9,7 @@ import { Agent, Match } from '../database/schemas';
 import { IsString, MinLength, IsNumber, Min, Max, IsIn } from 'class-validator';
 import { MIN_STAKE, MAX_STAKE } from '../common/constants/game.constants';
 import { SettlementService } from '../settlement/settlement.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 
 class JoinQueueDto {
   @IsString() @MinLength(1) agentId: string;
@@ -28,6 +29,7 @@ export class MatchmakingController {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     private readonly settlement: SettlementService,
+    private readonly settlementRouter: SettlementRouterService,
   ) {}
 
   @Post('join')
@@ -40,22 +42,31 @@ export class MatchmakingController {
     if (!agent.gameTypes.includes(dto.gameType)) throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet. Please recreate the agent.');
 
-    // Verify agent wallet has sufficient on-chain balance
-    const [usdcBalance, ethBalance] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(agent.walletAddress),
-      this.settlement.getAgentEthBalance(agent.walletAddress),
-    ]);
+    // Verify agent wallet has sufficient on-chain balance (skip for zero-stake)
+    if (dto.stakeAmount > 0) {
+      const chain = agent.chain || 'base';
+      const [tokenBalance, nativeBalance] = await Promise.all([
+        this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress),
+        this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress),
+      ]);
 
-    if (parseFloat(usdcBalance) < dto.stakeAmount) {
-      throw new BadRequestException(
-        `Insufficient USDC balance. Agent has ${usdcBalance} USDC but needs ${dto.stakeAmount}. Deposit USDC to ${agent.walletAddress}`,
-      );
-    }
+      if (parseFloat(tokenBalance) < dto.stakeAmount) {
+        const tokenName = chain === 'solana' ? 'ALPHA' : 'USDC';
+        throw new BadRequestException(
+          `Insufficient ${tokenName} balance. Agent has ${tokenBalance} but needs ${dto.stakeAmount}. Deposit to ${agent.walletAddress}`,
+        );
+      }
 
-    if (parseFloat(ethBalance) < 0.0001) {
-      throw new BadRequestException(
-        `Insufficient ETH for gas. Agent has ${ethBalance} ETH but needs at least 0.0001. Deposit ETH to ${agent.walletAddress}`,
-      );
+      // Solana: platform wallet pays tx fees, agents don't need SOL
+      if (chain !== 'solana') {
+        const minNative = chain === 'celo' ? 0.0001 : 0.0001;
+        const nativeName = chain === 'celo' ? 'CELO' : 'ETH';
+        if (parseFloat(nativeBalance) < minNative) {
+          throw new BadRequestException(
+            `Insufficient ${nativeName} for gas. Agent has ${nativeBalance} but needs at least ${minNative}. Deposit to ${agent.walletAddress}`,
+          );
+        }
+      }
     }
 
     agent.status = 'queued';

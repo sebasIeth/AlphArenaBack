@@ -106,6 +106,19 @@ export class ConfigService {
     return process.env.TWITTER_BEARER_TOKEN;
   }
 
+  // ── Solana Settlement ──
+  get solanaRpcUrl(): string | undefined {
+    return process.env.SOLANA_RPC_URL;
+  }
+
+  get solanaPrivateKey(): string | undefined {
+    return process.env.SOLANA_PRIVATE_KEY;
+  }
+
+  get solanaTokenMint(): string | undefined {
+    return process.env.SOLANA_TOKEN_MINT;
+  }
+
   private getRequired(key: string): string {
     const value = process.env[key];
     if (!value) {

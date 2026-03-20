@@ -24,6 +24,7 @@ import { createInitialState as createPokerInitialState, isMatchOver as isPokerMa
 import { ResultHandlerService } from './result-handler.service';
 import { EventBusService } from './event-bus.service';
 import { SettlementService } from '../settlement/settlement.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { MatchClock } from './match-clock';
 
 export interface MatchAgentInput {
@@ -65,6 +66,7 @@ export class MatchManagerService {
     private readonly resultHandler: ResultHandlerService,
     private readonly eventBus: EventBusService,
     private readonly settlement: SettlementService,
+    private readonly settlementRouter: SettlementRouterService,
     private readonly gameEngine: GameEngineService,
   ) {}
 
@@ -220,6 +222,7 @@ export class MatchManagerService {
 
     const matchData = {
       gameType: 'marrakech',
+      chain: agentA.chain || 'base',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -288,6 +291,7 @@ export class MatchManagerService {
 
     const matchData = {
       gameType: 'chess',
+      chain: agentA.chain || 'base',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -488,13 +492,15 @@ export class MatchManagerService {
 
     // Transfer stake from each agent wallet to platform, then escrow
     // Skip on-chain settlement for zero-stake matches
+    const matchChain = matchDoc.chain || 'base';
     if (matchDoc.stakeAmount > 0) {
-      const stakeAmountUsdc = BigInt(matchDoc.stakeAmount) * BigInt(10 ** TOKEN_DECIMALS);
-      const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
-      const platformWallet = this.settlement.getPlatformWalletAddress();
+      const tokenDecimals = this.settlementRouter.getTokenDecimals(matchChain);
+      const stakeAmountToken = BigInt(matchDoc.stakeAmount) * BigInt(10 ** tokenDecimals);
+      const escrowAmount = BigInt(matchDoc.potAmount) * BigInt(10 ** tokenDecimals);
+      const platformWallet = this.settlementRouter.getPlatformWalletAddress(matchChain);
 
       if (!platformWallet) {
-        this.logger.error(`Platform wallet not available for match ${matchId}`);
+        this.logger.error(`Platform wallet not available for match ${matchId} (chain=${matchChain})`);
         await this.matchModel.updateOne({ _id: matchId }, { status: 'cancelled' });
         await Promise.all(
           agentEntries.map(([, agentInfo]) => this.agentModel.updateOne({ _id: agentInfo.agentId }, { status: 'idle' })),
@@ -518,18 +524,22 @@ export class MatchManagerService {
           agentPrivKeys[side] = privKey;
         }
 
-        // Transfer stake from each agent
+        // Transfer stake from each agent to platform wallet
+        const transferTxHashes: string[] = [];
         for (const [side] of agentEntries) {
-          await this.settlement.transferUsdcFromAgent(agentPrivKeys[side], platformWallet, stakeAmountUsdc);
+          const txHash = await this.settlementRouter.transferTokenFromAgent(matchChain, agentPrivKeys[side], platformWallet, stakeAmountToken);
+          if (txHash) transferTxHashes.push(txHash);
         }
 
-        // Escrow using first two agent wallets (escrow contract is 2-party)
+        // Escrow via smart contract (EVM) or implicit (Solana — transfers already done)
         const walletA = agentDocsBySide['a']!.walletAddress;
         const walletB = agentDocsBySide['b']!.walletAddress;
-        const escrowTxHash = await this.settlement.escrow(
-          matchId, walletA, walletB, escrowAmount,
+        const escrowTxHash = await this.settlementRouter.escrow(
+          matchChain, matchId, walletA, walletB, escrowAmount,
         );
-        await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': escrowTxHash });
+        // For Solana, store the last transfer tx as the escrow hash
+        const storedEscrowHash = escrowTxHash || transferTxHashes[transferTxHashes.length - 1] || null;
+        await this.matchModel.updateOne({ _id: matchId }, { 'txHashes.escrow': storedEscrowHash });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`Escrow failed for match ${matchId}: ${message}`);

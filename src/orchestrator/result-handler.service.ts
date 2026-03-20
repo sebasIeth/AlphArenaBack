@@ -7,6 +7,7 @@ import { Match, Agent } from '../database/schemas';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
 import { SettlementService } from '../settlement/settlement.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 
 const ELO_K = 32;
 
@@ -43,6 +44,7 @@ export class ResultHandlerService {
     private readonly activeMatches: ActiveMatchesService,
     private readonly eventBus: EventBusService,
     private readonly settlement: SettlementService,
+    private readonly settlementRouter: SettlementRouterService,
   ) {}
 
   async handleMatchEnd(
@@ -78,22 +80,30 @@ export class ResultHandlerService {
       eloOutcome,
     );
 
+    const matchChain = matchDoc.chain || 'base';
+    const tokenDecimals = this.settlementRouter.getTokenDecimals(matchChain);
+
     let payoutTxHash: string | null = null;
     if (matchDoc.potAmount > 0) {
       try {
         if (winnerId && winningSide) {
-          const potAmountUsdc = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
-          const platformFeeUsdc = potAmountUsdc * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
-          const payoutAmountUsdc = potAmountUsdc - platformFeeUsdc;
+          const potAmountToken = BigInt(matchDoc.potAmount) * BigInt(10 ** tokenDecimals);
+          const platformFeeToken = potAmountToken * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
+          const payoutAmountToken = potAmountToken - platformFeeToken;
 
           const winnerWallet = matchState.agents[winningSide].walletAddress;
           if (!winnerWallet) {
             this.logger.error(`No wallet address for winner (side=${winningSide}) in match ${matchId}`);
           } else {
-            payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountUsdc);
+            payoutTxHash = await this.settlementRouter.payout(matchChain, matchId, winnerWallet, payoutAmountToken);
           }
         } else {
-          payoutTxHash = await this.settlement.refund(matchId);
+          // Refund: for Solana, provide individual refund targets
+          const stakeAmountToken = BigInt(matchDoc.stakeAmount) * BigInt(10 ** tokenDecimals);
+          const refundTargets = Object.values(matchState.agents)
+            .filter((a: any) => a.walletAddress)
+            .map((a: any) => ({ address: a.walletAddress as string, amount: stakeAmountToken }));
+          payoutTxHash = await this.settlementRouter.refund(matchChain, matchId, refundTargets);
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);

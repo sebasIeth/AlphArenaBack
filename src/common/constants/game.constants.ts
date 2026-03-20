@@ -3,7 +3,7 @@ export const TURN_TIMEOUT_MS = 20_000;
 export const PULL_AGENT_TURN_TIMEOUT_MS = 120_000;
 export const MAX_TIMEOUTS = 2;
 const isProd = process.env.NODE_ENV === 'production';
-export const MIN_STAKE = 1_000_000;
+export const MIN_STAKE = 0;
 export const MAX_STAKE = 1_000_000;
 export const PLATFORM_FEE_PERCENT = 5;
 export const MATCHMAKING_INTERVAL_MS = 2_000;
@@ -23,7 +23,7 @@ export const GAME_TYPES = ['marrakech', 'chess', 'poker'] as const;
 
 export const POKER_SMALL_BLIND = 20;
 export const POKER_BIG_BLIND = 40;
-export const POKER_MAX_HANDS = 3;
+export const POKER_MAX_HANDS = 50;
 
 export const CHESS_PIECE = {
   EMPTY: 0,
