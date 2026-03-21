@@ -67,9 +67,7 @@ export class AgentsService {
       agentData.walletPrivateKey = bs58.default.encode(keypair.secretKey);
     }
 
-    if (dto.chain) {
-      agentData.chain = dto.chain;
-    }
+    agentData.chain = dto.chain || 'solana';
 
     const agent = await this.agentModel.create(agentData);
 
