@@ -27,7 +27,7 @@ export type PokerStreet = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
 export interface PokerAction {
   type: PokerActionType;
   amount?: number;
-  playerSide: 'a' | 'b';
+  playerSide: string;
   street: PokerStreet;
   timestamp: number;
 }
@@ -46,7 +46,7 @@ export interface PokerLegalActions {
 
 // ─── Player State ──────────────────────────────────────
 export interface PokerPlayerState {
-  side: 'a' | 'b';
+  side: string;
   stack: number;
   holeCards: Card[];
   currentBet: number;
@@ -54,9 +54,10 @@ export interface PokerPlayerState {
   hasFolded: boolean;
   isAllIn: boolean;
   isDealer: boolean;
+  isEliminated?: boolean;
 }
 
-// ─── Game State ────────────────────────────────────────
+// ─── Game State (N players, 2-9) ──────────────────────
 export interface PokerGameState {
   handNumber: number;
   street: PokerStreet;
@@ -64,28 +65,31 @@ export interface PokerGameState {
   communityCards: Card[];
   deck: Card[];
 
-  players: {
-    a: PokerPlayerState;
-    b: PokerPlayerState;
-  };
+  /** Players keyed by side letter: a, b, c, ... i */
+  players: Record<string, PokerPlayerState>;
+  /** Ordered seat positions */
+  seatOrder: string[];
 
   smallBlind: number;
   bigBlind: number;
-  dealerSide: 'a' | 'b';
+  dealerSide: string;
+  sbSide: string;
+  bbSide: string;
 
-  currentPlayerSide: 'a' | 'b';
-  lastAggressor: 'a' | 'b' | null;
+  currentPlayerSide: string;
+  lastAggressor: string | null;
   actionsThisStreet: PokerAction[];
   actionHistory: PokerAction[];
 
   startingStack: number;
   gameOver: boolean;
-  winner: 'a' | 'b' | 'draw' | null;
+  winner: string | null;
   winReason: 'fold' | 'showdown' | 'all_in_runout' | null;
   showdownResult?: {
-    winnerSide: 'a' | 'b' | 'draw';
+    winnerSide: string;
     winnerHand: HandRank;
-    loserHand: HandRank;
+    loserHand?: HandRank;
+    hands?: Record<string, HandRank>;
   };
 }
 
@@ -95,14 +99,23 @@ export interface PokerMoveRequest {
   gameType: 'poker';
   handNumber: number;
   street: PokerStreet;
-  yourSide: 'a' | 'b';
+  yourSide: string;
   yourHoleCards: Card[];
   communityCards: Card[];
   pot: number;
   yourStack: number;
-  opponentStack: number;
   yourCurrentBet: number;
-  opponentCurrentBet: number;
+  otherPlayers: Array<{
+    side: string;
+    stack: number;
+    currentBet: number;
+    hasFolded: boolean;
+    isAllIn: boolean;
+  }>;
+  /** @deprecated use otherPlayers[0].stack */
+  opponentStack?: number;
+  /** @deprecated use otherPlayers[0].currentBet */
+  opponentCurrentBet?: number;
   legalActions: PokerLegalActions;
   actionHistory: PokerAction[];
   blinds: { small: number; big: number };

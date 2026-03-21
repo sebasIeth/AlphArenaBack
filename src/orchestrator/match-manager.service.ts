@@ -361,7 +361,7 @@ export class MatchManagerService {
   ): Promise<string> {
     // Starting stack = 100 big blinds
     const startingStack = POKER_BIG_BLIND * 100;
-    const pokerState = createPokerInitialState(startingStack, POKER_SMALL_BLIND, POKER_BIG_BLIND);
+    const pokerState = createPokerInitialState(startingStack, POKER_SMALL_BLIND, POKER_BIG_BLIND, agents.length);
 
     // Build agents Record keyed by side letter ('a', 'b', 'c', ...)
     const matchAgents: Record<string, { agentId: string; userId: string; name: string; eloAtStart: number }> = {};
@@ -789,13 +789,14 @@ export class MatchManagerService {
       }
 
       if (isPokerMatchOver(pokerState)) {
-        const winningSide: Side | undefined = pokerState.winner === 'a' ? 'a' : pokerState.winner === 'b' ? 'b' : undefined;
+        const winningSide: Side | undefined = pokerState.winner && pokerState.winner !== 'draw' ? pokerState.winner as Side : undefined;
+        const stacks = Object.fromEntries(Object.entries(pokerState.players).map(([s, p]) => [s, p.stack]));
         this.activeMatches.updateMatch(matchId, {
           gameState: {
             ...matchState.gameState,
-            scores: { black: pokerState.players.a.stack, white: pokerState.players.b.stack },
+            scores: { black: stacks['a'] || 0, white: stacks['b'] || 0 },
             gameOver: true,
-            winner: winningSide === 'a' ? 'B' : winningSide === 'b' ? 'W' : 'draw',
+            winner: winningSide ? 'B' : 'draw',
           },
         });
         await this.endMatch(matchId, 'score', winningSide);
@@ -812,11 +813,11 @@ export class MatchManagerService {
       this.activeMatches.updateMatch(matchId, {
         gameState: {
           ...matchState.gameState,
-          scores: { black: handResult.pokerState.players.a.stack, white: handResult.pokerState.players.b.stack },
+          scores: { black: handResult.pokerState.players['a']?.stack || 0, white: handResult.pokerState.players['b']?.stack || 0 },
           moveNumber: handResult.pokerState.actionHistory.length,
           gameOver: handResult.matchOver,
           winner: handResult.matchOver
-            ? (handResult.winner === 'a' ? 'B' : handResult.winner === 'b' ? 'W' : 'draw')
+            ? (handResult.winner && handResult.winner !== 'draw' ? 'B' : 'draw')
             : null,
         },
       });
@@ -825,16 +826,22 @@ export class MatchManagerService {
       if (!updated) return;
 
       if (handResult.matchOver) {
-        const winningSide: Side | undefined = handResult.winner === 'a' ? 'a' : handResult.winner === 'b' ? 'b' : undefined;
+        const winningSide: Side | undefined = handResult.winner && handResult.winner !== 'draw' ? handResult.winner as Side : undefined;
         await this.endMatch(matchId, 'score', winningSide);
         return;
       }
 
       // Max hands limit to prevent infinite matches
       if (handResult.pokerState.handNumber >= POKER_MAX_HANDS) {
-        const stackA = handResult.pokerState.players.a.stack;
-        const stackB = handResult.pokerState.players.b.stack;
-        const winningSide: Side | undefined = stackA > stackB ? 'a' : stackB > stackA ? 'b' : undefined;
+        // Find player with highest stack
+        let bestSide: string | undefined;
+        let bestStack = -1;
+        let tied = false;
+        for (const [side, player] of Object.entries(handResult.pokerState.players)) {
+          if (player.stack > bestStack) { bestStack = player.stack; bestSide = side; tied = false; }
+          else if (player.stack === bestStack) { tied = true; }
+        }
+        const winningSide: Side | undefined = bestSide && !tied ? bestSide as Side : undefined;
         this.logger.log(`Match ${matchId}: max hands (${POKER_MAX_HANDS}) reached, winner by stack: ${winningSide ?? 'draw'}`);
         await this.endMatch(matchId, 'max_hands' as any, winningSide);
         return;
@@ -1051,8 +1058,12 @@ export class MatchManagerService {
             else if (materialScore < 0) forcedWinner = 'b';
           } else if (gameType === 'poker' && match.pokerState) {
             const pkState = match.pokerState as PokerGameState;
-            if (pkState.players.a.stack > pkState.players.b.stack) forcedWinner = 'a';
-            else if (pkState.players.b.stack > pkState.players.a.stack) forcedWinner = 'b';
+            let bestS: string | undefined; let bestSt = -1; let tie = false;
+            for (const [side, pl] of Object.entries(pkState.players)) {
+              if (pl.stack > bestSt) { bestSt = pl.stack; bestS = side; tie = false; }
+              else if (pl.stack === bestSt) { tie = true; }
+            }
+            if (bestS && !tie) forcedWinner = bestS as Side;
           } else if (scores) {
             if (scores.a > scores.b) forcedWinner = 'a';
             else if (scores.b > scores.a) forcedWinner = 'b';
@@ -1149,7 +1160,7 @@ export class MatchManagerService {
             board: [] as unknown as Board,
             currentPlayer: currentColor,
             moveNumber: match.moveCount,
-            scores: { black: pkState.players.a.stack, white: pkState.players.b.stack },
+            scores: { black: pkState.players['a']?.stack || 0, white: pkState.players['b']?.stack || 0 },
             gameOver: false,
             winner: null,
           };

@@ -1,14 +1,10 @@
 import { PokerGameState, PokerAction, PokerLegalActions } from '../../common/types';
-
-function opponent(side: 'a' | 'b'): 'a' | 'b' {
-  return side === 'a' ? 'b' : 'a';
-}
+import { nextActiveSeat, getActiveSides, getActableSides, getMaxBet } from './engine';
 
 export function getLegalActions(state: PokerGameState): PokerLegalActions {
   const player = state.players[state.currentPlayerSide];
-  const opp = state.players[opponent(state.currentPlayerSide)];
-
-  const toCall = opp.currentBet - player.currentBet;
+  const maxBet = getMaxBet(state);
+  const toCall = maxBet - player.currentBet;
   const canAffordCall = player.stack >= toCall;
 
   const result: PokerLegalActions = {
@@ -27,7 +23,7 @@ export function getLegalActions(state: PokerGameState): PokerLegalActions {
   if (player.stack > toCall) {
     const lastRaiseSize = getLastRaiseSize(state);
     const minRaiseAmount = Math.max(lastRaiseSize, state.bigBlind);
-    const minRaiseTotal = opp.currentBet + minRaiseAmount;
+    const minRaiseTotal = maxBet + minRaiseAmount;
     const maxRaiseTotal = player.stack + player.currentBet;
 
     if (player.stack > toCall + minRaiseAmount) {
@@ -44,7 +40,6 @@ function getLastRaiseSize(state: PokerGameState): number {
   const streetActions = state.actionsThisStreet;
   for (let i = streetActions.length - 1; i >= 0; i--) {
     if (streetActions[i].type === 'raise' && streetActions[i].amount != null) {
-      // Find previous bet level to calculate raise size
       let prevBet = 0;
       for (let j = i - 1; j >= 0; j--) {
         if (streetActions[j].playerSide !== streetActions[i].playerSide) {
@@ -63,7 +58,7 @@ function getLastRaiseSize(state: PokerGameState): number {
 export function applyAction(state: PokerGameState, action: PokerAction): PokerGameState {
   const s = deepClone(state);
   const player = s.players[action.playerSide];
-  const opp = s.players[opponent(action.playerSide)];
+  const maxBet = getMaxBet(s);
 
   switch (action.type) {
     case 'fold':
@@ -71,11 +66,10 @@ export function applyAction(state: PokerGameState, action: PokerAction): PokerGa
       break;
 
     case 'check':
-      // No money moves
       break;
 
     case 'call': {
-      const toCall = Math.min(opp.currentBet - player.currentBet, player.stack);
+      const toCall = Math.min(maxBet - player.currentBet, player.stack);
       player.stack -= toCall;
       player.currentBet += toCall;
       player.totalBetThisHand += toCall;
@@ -103,7 +97,7 @@ export function applyAction(state: PokerGameState, action: PokerAction): PokerGa
       s.pot += allInAmount;
       player.stack = 0;
       player.isAllIn = true;
-      if (player.currentBet > opp.currentBet) {
+      if (player.currentBet > maxBet) {
         s.lastAggressor = action.playerSide;
       }
       break;
@@ -113,42 +107,66 @@ export function applyAction(state: PokerGameState, action: PokerAction): PokerGa
   s.actionsThisStreet.push(action);
   s.actionHistory.push(action);
 
-  // Advance current player (if not fold and street continues)
+  // Advance to next active, non-all-in player
   if (action.type !== 'fold') {
-    s.currentPlayerSide = opponent(action.playerSide);
+    s.currentPlayerSide = nextActiveSeat(s, action.playerSide, true);
+  } else {
+    // After fold, advance to next active player (may include all-in for street-over check)
+    const remaining = getActableSides(s);
+    if (remaining.length > 0) {
+      s.currentPlayerSide = nextActiveSeat(s, action.playerSide, true);
+    }
   }
 
   return s;
 }
 
 export function isStreetOver(state: PokerGameState): boolean {
-  const a = state.players.a;
-  const b = state.players.b;
+  const active = getActiveSides(state);
+  const actable = getActableSides(state);
 
-  // Someone folded
-  if (a.hasFolded || b.hasFolded) return true;
+  // Only 1 player left (everyone else folded)
+  if (active.length <= 1) return true;
 
-  // Both all-in
-  if (a.isAllIn && b.isAllIn) return true;
+  // All active players are all-in
+  if (actable.length === 0) return true;
 
-  // One all-in and other has matched or exceeded
-  if (a.isAllIn && state.actionsThisStreet.some(act => act.playerSide === 'b' && act.type !== 'fold')) return true;
-  if (b.isAllIn && state.actionsThisStreet.some(act => act.playerSide === 'a' && act.type !== 'fold')) return true;
-
-  const actions = state.actionsThisStreet;
-  if (actions.length < 2) return false;
-
-  // Both have acted and bets are equal
-  const aActed = actions.some(act => act.playerSide === 'a');
-  const bActed = actions.some(act => act.playerSide === 'b');
-
-  if (aActed && bActed && a.currentBet === b.currentBet) {
-    // Check the last action wasn't a raise (opponent needs chance to respond)
-    const lastAction = actions[actions.length - 1];
-    if (lastAction.type !== 'raise') return true;
+  // Only 1 player can act (rest are all-in) and they've matched or it's their turn
+  if (actable.length === 1) {
+    const p = state.players[actable[0]];
+    const maxBet = getMaxBet(state);
+    // If the actable player has matched the max bet and has acted this street
+    const hasActed = state.actionsThisStreet.some(a => a.playerSide === actable[0]);
+    if (p.currentBet === maxBet && hasActed) return true;
   }
 
-  return false;
+  const actions = state.actionsThisStreet;
+  if (actions.length === 0) return false;
+
+  // All actable players must have acted this street
+  const maxBet = getMaxBet(state);
+  for (const side of actable) {
+    const p = state.players[side];
+    // Must have equal bet
+    if (p.currentBet !== maxBet) return false;
+    // Must have acted this street
+    const acted = actions.some(a => a.playerSide === side);
+    if (!acted) return false;
+  }
+
+  // If the last action was a raise, the raiser's opponents need to respond
+  const lastAction = actions[actions.length - 1];
+  if (lastAction.type === 'raise' || lastAction.type === 'all_in') {
+    // Check if everyone else has acted AFTER the last raise
+    const lastRaiseIdx = actions.length - 1;
+    for (const side of actable) {
+      if (side === lastAction.playerSide) continue;
+      const actedAfter = actions.slice(lastRaiseIdx + 1).some(a => a.playerSide === side);
+      if (!actedAfter) return false;
+    }
+  }
+
+  return true;
 }
 
 function deepClone<T>(obj: T): T {

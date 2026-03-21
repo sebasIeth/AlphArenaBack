@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MatchmakingQueue, QueueEntryData } from './matchmaking.queue';
-import { findPairs } from './pairing';
+import { findPairs, findPokerGroup } from './pairing';
 import { Agent } from '../database/schemas';
 import { MATCHMAKING_INTERVAL_MS, MATCHMAKING_COUNTDOWN_MS } from '../common/constants/game.constants';
 import { OrchestratorService } from '../orchestrator/orchestrator.service';
@@ -14,6 +14,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private processing = false;
   private onPairedCallback: ((agentA: string, agentB: string, stakeAmount: number, gameType: string, token?: string) => Promise<string>) | null = null;
+  private onMultiMatchCallback: ((agentIds: string[], stakeAmount: number, gameType: string, token?: string) => Promise<string>) | null = null;
   private readonly countdowns = new Map<string, { startedAt: number }>();
 
   constructor(
@@ -64,6 +65,26 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         gameType,
       );
     });
+
+    // Multi-agent callback for poker (N players)
+    this.onMultiMatchCallback = async (agentIds, stakeAmount, gameType, token) => {
+      const agentDocs = await Promise.all(agentIds.map(id => this.agentModel.findById(id)));
+      const agents = agentDocs.filter(Boolean).map(a => ({
+        agentId: a!._id.toString(),
+        userId: a!.userId.toString(),
+        name: a!.name,
+        endpointUrl: a!.endpointUrl ?? '',
+        eloRating: a!.eloRating,
+        type: a!.type,
+        chain: a!.chain,
+        token,
+        openclawUrl: a!.openclawUrl,
+        openclawToken: a!.openclawToken,
+        openclawAgentId: a!.openclawAgentId,
+      }));
+      if (agents.length < 2) throw new Error('Not enough valid agents');
+      return this.orchestrator.startMatchMulti(agents, stakeAmount, gameType);
+    };
 
     this.logger.log(`Matchmaking service started, queue size: ${this.queue.size()}`);
     this.intervalId = setInterval(() => { void this.processPairing(); }, MATCHMAKING_INTERVAL_MS);
@@ -136,10 +157,47 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         const waiting = this.queue.getWaiting(gameType);
         if (waiting.length < 2) continue;
 
+        // Poker: use multi-agent grouping (2-9 players)
+        if (gameType === 'poker' && this.onMultiMatchCallback) {
+          const group = findPokerGroup(waiting);
+          if (!group || group.length < 2) continue;
+
+          // Poker always uses countdown to wait for more players (up to 9)
+          {
+            const countdown = this.countdowns.get(gameType);
+            const now = Date.now();
+            if (!countdown) {
+              this.countdowns.set(gameType, { startedAt: now });
+              this.logger.log(`Poker countdown started with ${waiting.length} agents`);
+              this.emitCountdown(gameType, MATCHMAKING_COUNTDOWN_MS, waiting);
+              continue;
+            }
+            const remaining = MATCHMAKING_COUNTDOWN_MS - (now - countdown.startedAt);
+            if (remaining > 0) { this.emitCountdown(gameType, remaining, waiting); continue; }
+            this.countdowns.delete(gameType);
+            this.logger.log(`Poker countdown expired, creating match with ${group.length} players`);
+          }
+
+          try {
+            for (const entry of group) await this.queue.setStatus(entry.agentId, 'pairing');
+            const stakeAmount = Math.min(...group.map(e => e.stakeAmount));
+            const token = group[0].token || 'ALPHA';
+            const matchId = await this.onMultiMatchCallback(group.map(e => e.agentId), stakeAmount, gameType, token);
+            this.eventBus.emit('matchmaking:matched', { matchId, gameType, agents: group.map(e => e.agentId) });
+            for (const entry of group) await this.queue.remove(entry.agentId);
+          } catch (err) {
+            this.logger.error(`Failed to create poker match: ${err}`);
+            for (const entry of group) {
+              try { await this.queue.setStatus(entry.agentId, 'waiting'); } catch {}
+            }
+          }
+          continue;
+        }
+
+        // Chess/other: pair 2 agents
         const pairs = findPairs(waiting);
         if (pairs.length === 0) continue;
 
-        // Exactly 2 agents — pair instantly, no countdown
         if (waiting.length === 2 && pairs.length === 1) {
           this.countdowns.delete(gameType);
           this.logger.log(`Instant pairing for ${gameType} — exactly 2 agents`);
