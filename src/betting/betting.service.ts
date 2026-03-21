@@ -243,7 +243,7 @@ export class BettingService implements OnModuleInit {
 
     const betsByAgent: Record<string, number> = {};
     for (const bet of userBets) {
-      const agentId = bet.onAgentId || (bet.onAgentA ? match.agents.a.agentId.toString() : match.agents.b.agentId.toString());
+      const agentId = bet.onAgentId || (bet.onAgentA ? (match.agents as any).a?.agentId?.toString() : (match.agents as any).b?.agentId?.toString()) || '';
       betsByAgent[agentId] = (betsByAgent[agentId] || 0) + bet.amount;
     }
 
@@ -325,7 +325,7 @@ export class BettingService implements OnModuleInit {
 
     const betsByAgent: Record<string, number> = {};
     for (const bet of userBets) {
-      const agentId = bet.onAgentId || (bet.onAgentA ? match.agents.a.agentId.toString() : match.agents.b.agentId.toString());
+      const agentId = bet.onAgentId || (bet.onAgentA ? (match.agents as any).a?.agentId?.toString() : (match.agents as any).b?.agentId?.toString()) || '';
       betsByAgent[agentId] = (betsByAgent[agentId] || 0) + bet.amount;
     }
     const total = Object.values(betsByAgent).reduce((s, v) => s + v, 0);
@@ -425,7 +425,7 @@ export class BettingService implements OnModuleInit {
 
       const betsByAgent: Record<string, number> = {};
       for (const bet of betsForMatch) {
-        const agentId = bet.onAgentId || (bet.onAgentA ? match.agents.a.agentId.toString() : match.agents.b.agentId.toString());
+        const agentId = bet.onAgentId || (bet.onAgentA ? (match.agents as any).a?.agentId?.toString() : (match.agents as any).b?.agentId?.toString()) || '';
         betsByAgent[agentId] = (betsByAgent[agentId] || 0) + bet.amount;
       }
       const total = Object.values(betsByAgent).reduce((s, v) => s + v, 0);
