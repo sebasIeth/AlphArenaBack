@@ -482,6 +482,7 @@ export class PokerTurnControllerService {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to save poker move #${moveNumber} for match ${matchId}: ${message}`);
+      this.logger.error(`Move details: side=${side}, matchId=${matchId}, moveNumber=${moveNumber}`);
     }
   }
 

@@ -9,7 +9,7 @@ export class MoveDoc extends Document {
   @Prop({ type: Types.ObjectId, ref: 'Agent', required: true })
   agentId: Types.ObjectId;
 
-  @Prop({ type: String, enum: ['a', 'b'], required: true })
+  @Prop({ type: String, required: true })
   side: string;
 
   @Prop({ required: true })
@@ -22,7 +22,7 @@ export class MoveDoc extends Document {
   boardStateAfter: unknown;
 
   @Prop({ type: Object, required: true })
-  scoreAfter: { a: number; b: number };
+  scoreAfter: Record<string, number>;
 
   @Prop({ required: true })
   thinkingTimeMs: number;

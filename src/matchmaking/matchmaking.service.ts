@@ -183,6 +183,23 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
             const stakeAmount = Math.min(...group.map(e => e.stakeAmount));
             const token = group[0].token || 'ALPHA';
             const matchId = await this.onMultiMatchCallback(group.map(e => e.agentId), stakeAmount, gameType, token);
+            // Save x402 escrow TXs to match
+            if (token === 'USDC') {
+              const escrowTxs: { agentId: string; txSignature: string; amount: number }[] = [];
+              for (const entry of group) {
+                const payment = this.x402PaymentStore.getPayment(entry.agentId);
+                if (payment) {
+                  escrowTxs.push({ agentId: entry.agentId, txSignature: payment.txSignature, amount: payment.amount });
+                  this.x402PaymentStore.consumePayment(entry.agentId);
+                }
+              }
+              if (escrowTxs.length > 0) {
+                await this.agentModel.db.collection('matches').updateOne(
+                  { _id: new (require('mongoose').Types.ObjectId)(matchId) },
+                  { $set: { 'txHashes.escrow': escrowTxs } },
+                );
+              }
+            }
             this.eventBus.emit('matchmaking:matched', { matchId, gameType, agents: group.map(e => e.agentId) });
             for (const entry of group) await this.queue.remove(entry.agentId);
           } catch (err) {
@@ -234,6 +251,23 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
             const stakeAmount = Math.min(entryA.stakeAmount, entryB.stakeAmount);
             const token = entryA.token || entryB.token || 'ALPHA';
             const matchId = await this.onPairedCallback(entryA.agentId, entryB.agentId, stakeAmount, gameType, token);
+            // Save x402 escrow TXs
+            if (token === 'USDC') {
+              const escrowTxs: { agentId: string; txSignature: string; amount: number }[] = [];
+              for (const entry of [entryA, entryB]) {
+                const payment = this.x402PaymentStore.getPayment(entry.agentId);
+                if (payment) {
+                  escrowTxs.push({ agentId: entry.agentId, txSignature: payment.txSignature, amount: payment.amount });
+                  this.x402PaymentStore.consumePayment(entry.agentId);
+                }
+              }
+              if (escrowTxs.length > 0) {
+                await this.agentModel.db.collection('matches').updateOne(
+                  { _id: new (require('mongoose').Types.ObjectId)(matchId) },
+                  { $set: { 'txHashes.escrow': escrowTxs } },
+                );
+              }
+            }
             this.eventBus.emit('matchmaking:matched', {
               matchId,
               gameType,
