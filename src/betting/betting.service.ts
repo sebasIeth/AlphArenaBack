@@ -7,10 +7,10 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { parseUnits } from 'viem';
 import { Bet, Match, User } from '../database/schemas';
 import { EventBusService } from '../orchestrator/event-bus.service';
-import { SettlementService } from '../settlement/settlement.service';
+import { SolanaSettlementService } from '../settlement/solana-settlement.service';
+import { X402VerifierService } from '../settlement/x402-verifier.service';
 import { MatchEndedEvent } from '../common/types';
 
 const BETTING_FEE_PERCENT = 5;
@@ -28,9 +28,7 @@ interface PoolResult {
   totalPool: number;
   noContest: boolean;
   agents: AgentPool[];
-  /** @deprecated compat — equals agents[0].totalBets */
   totalBetsA: number;
-  /** @deprecated compat — equals agents[1].totalBets */
   totalBetsB: number;
 }
 
@@ -43,7 +41,8 @@ export class BettingService implements OnModuleInit {
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly eventBus: EventBusService,
-    private readonly settlement: SettlementService,
+    private readonly solanaSettlement: SolanaSettlementService,
+    private readonly x402Verifier: X402VerifierService,
   ) {}
 
   onModuleInit() {
@@ -55,9 +54,9 @@ export class BettingService implements OnModuleInit {
   }
 
   /* ────────────────────────────────────────────────────────
-     PLACE BET
+     PLACE BET — requires x402 USDC payment first
      ──────────────────────────────────────────────────────── */
-  async placeBet(userId: string, matchId: string, onAgentId: string, amount: number) {
+  async placeBet(userId: string, matchId: string, onAgentId: string, amount: number, x402TxSignature?: string) {
     if (amount < MIN_BET) {
       throw new BadRequestException(`Minimum bet is ${MIN_BET}`);
     }
@@ -69,40 +68,37 @@ export class BettingService implements OnModuleInit {
       throw new BadRequestException('Betting is closed for this match');
     }
 
-    // Validate that onAgentId is a participant in this match
     const agentIds = this.getMatchAgentIds(match);
     if (!agentIds.includes(onAgentId)) {
       throw new BadRequestException('Agent is not a participant in this match');
     }
 
-    const user = await this.userModel.findById(userId).select('+walletPrivateKey');
+    const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
     if (!user.walletAddress) throw new BadRequestException('No wallet linked to your account');
 
-    const balanceStr = await this.settlement.getAgentUsdcBalance(user.walletAddress);
-    const balanceNum = parseFloat(balanceStr);
-    if (balanceNum < amount) {
-      throw new BadRequestException(`Insufficient balance: you have ${balanceNum.toFixed(2)} ALPHA but tried to bet ${amount}`);
-    }
-
-    const decimals = this.settlement.getUsdcDecimals();
-    const amountWei = parseUnits(amount.toString(), decimals);
-    const platformAddress = this.settlement.getPlatformWalletAddress();
-
-    let txHash: string | null = null;
-    if (platformAddress && user.walletPrivateKey) {
-      txHash = await this.settlement.transferUsdcFromAgent(
-        user.walletPrivateKey,
-        platformAddress,
-        amountWei,
+    // Verify x402 USDC payment
+    if (!x402TxSignature) {
+      throw new BadRequestException(
+        'Bets require USDC payment via x402. POST to /x402/stake first to get payment requirements, then include x402TxSignature.',
       );
     }
 
-    if (!txHash) {
-      this.logger.warn(`On-chain transfer skipped for bet (settlement not configured): user=${userId}, match=${matchId}`);
+    const decimals = this.solanaSettlement.getTokenDecimals('USDC');
+    const expectedAmount = BigInt(Math.round(amount * 10 ** decimals));
+    const platformWallet = this.solanaSettlement.getPlatformWalletAddress();
+
+    if (!platformWallet) {
+      throw new BadRequestException('Settlement not configured');
     }
 
-    // Determine legacy onAgentA for backwards compat
+    // Verify the x402 payment on-chain
+    const verification = await this.x402Verifier.verifyStakePayment(x402TxSignature, expectedAmount, platformWallet);
+
+    if (!verification.valid) {
+      throw new BadRequestException(`Payment verification failed: ${verification.error}`);
+    }
+
     const onAgentA = onAgentId === match.agents.a.agentId.toString();
 
     const bet = await this.betModel.create({
@@ -112,21 +108,24 @@ export class BettingService implements OnModuleInit {
       onAgentId,
       onAgentA,
       amount,
-      txHash: txHash || null,
+      txHash: x402TxSignature,
+      chain: 'solana',
+      token: 'USDC',
     });
 
-    this.logger.log(`Bet placed: user=${userId}, match=${matchId}, onAgent=${onAgentId}, amount=${amount}, txHash=${txHash}`);
+    this.logger.log(`Bet placed: user=${userId}, match=${matchId}, onAgent=${onAgentId}, amount=${amount}, txHash=${x402TxSignature}`);
 
     return {
-      txHash: txHash || bet._id.toString(),
+      txHash: x402TxSignature,
       matchId,
       onAgentId,
       amount,
+      chain: 'solana',
     };
   }
 
   /* ────────────────────────────────────────────────────────
-     GET BETTING INFO (full info for a match)
+     GET BETTING INFO
      ──────────────────────────────────────────────────────── */
   async getBettingInfo(matchId: string) {
     const match = await this.matchModel.findById(matchId).lean();
@@ -153,7 +152,7 @@ export class BettingService implements OnModuleInit {
 
     return {
       matchId,
-      chain: 'base',
+      chain: 'solana',
       gameType: match.gameType,
       status: match.status,
       stakeAmount: match.stakeAmount,
@@ -176,7 +175,6 @@ export class BettingService implements OnModuleInit {
           totalPool: pool.totalPool,
           noContest: pool.noContest,
           agents: pool.agents,
-          // Legacy compat
           totalBetsA: pool.totalBetsA,
           totalBetsB: pool.totalBetsB,
           percentA: pool.agents.find((a) => a.agentId === match.agents.a.agentId.toString())?.percent ?? 50,
@@ -186,7 +184,6 @@ export class BettingService implements OnModuleInit {
         feePercent: BETTING_FEE_PERCENT,
       },
       winner,
-      contracts: { arena: '', alpha: '' },
     };
   }
 
@@ -202,7 +199,7 @@ export class BettingService implements OnModuleInit {
 
     return {
       matchId,
-      chain: 'base',
+      chain: 'solana',
       status: match.status,
       bettingOpen: isOpen,
       pool: {
@@ -216,7 +213,7 @@ export class BettingService implements OnModuleInit {
   }
 
   /* ────────────────────────────────────────────────────────
-     GET MY BETS (for a specific match)
+     GET MY BETS
      ──────────────────────────────────────────────────────── */
   async getMyBets(userId: string, matchId: string) {
     const match = await this.matchModel.findById(matchId).lean();
@@ -227,7 +224,6 @@ export class BettingService implements OnModuleInit {
       userId: new Types.ObjectId(userId),
     }).lean();
 
-    // Group bets by agentId
     const betsByAgent: Record<string, number> = {};
     for (const bet of userBets) {
       const agentId = bet.onAgentId || (bet.onAgentA ? match.agents.a.agentId.toString() : match.agents.b.agentId.toString());
@@ -240,7 +236,6 @@ export class BettingService implements OnModuleInit {
     const pool = await this.calculatePool(matchId, match);
     const netMultiplier = 1 - BETTING_FEE_PERCENT / 100;
 
-    // Calculate potential winnings per agent
     const potential: Record<string, number> = {};
     for (const ap of pool.agents) {
       const userBetOnThis = betsByAgent[ap.agentId] || 0;
@@ -249,7 +244,6 @@ export class BettingService implements OnModuleInit {
         : 0;
     }
 
-    // Determine outcome
     let outcome: 'won' | 'lost' | 'refund' | 'pending' | 'no_bet' = 'no_bet';
     let winnings = 0;
 
@@ -271,18 +265,16 @@ export class BettingService implements OnModuleInit {
     }
 
     const canClaim = (outcome === 'won' || outcome === 'refund') && !claimed && total > 0;
-
     const user = await this.userModel.findById(userId).lean();
 
     return {
       matchId,
-      chain: 'base',
+      chain: 'solana',
       walletAddress: user?.walletAddress || '',
       bets: {
         byAgent: betsByAgent,
         total: total.toFixed(2),
         claimed,
-        // Legacy compat
         onA: (betsByAgent[match.agents.a.agentId.toString()] || 0).toFixed(2),
         onB: (betsByAgent[match.agents.b.agentId.toString()] || 0).toFixed(2),
       },
@@ -294,7 +286,7 @@ export class BettingService implements OnModuleInit {
   }
 
   /* ────────────────────────────────────────────────────────
-     CLAIM BET
+     CLAIM BET — pays out in USDC on Solana
      ──────────────────────────────────────────────────────── */
   async claimBet(userId: string, matchId: string) {
     const match = await this.matchModel.findById(matchId).lean();
@@ -314,7 +306,6 @@ export class BettingService implements OnModuleInit {
       throw new BadRequestException('No unclaimed bets found');
     }
 
-    // Group by agentId
     const betsByAgent: Record<string, number> = {};
     for (const bet of userBets) {
       const agentId = bet.onAgentId || (bet.onAgentA ? match.agents.a.agentId.toString() : match.agents.b.agentId.toString());
@@ -325,9 +316,8 @@ export class BettingService implements OnModuleInit {
     let payout = 0;
 
     if (match.status === 'cancelled') {
-      payout = total; // Full refund only on cancellation
+      payout = total;
     } else if (match.status === 'completed' && !match.result?.winnerId) {
-      // Draw — refund minus platform fee
       payout = total * (1 - BETTING_FEE_PERCENT / 100);
     } else if (match.result?.winnerId) {
       const winnerId = match.result.winnerId.toString();
@@ -344,29 +334,43 @@ export class BettingService implements OnModuleInit {
     }
 
     let txHash: string | null = null;
+    let feeTxHash: string | null = null;
+
     if (payout > 0) {
       const user = await this.userModel.findById(userId);
       if (user?.walletAddress) {
-        const decimals = this.settlement.getUsdcDecimals();
-        const payoutWei = parseUnits(payout.toString(), decimals);
-        txHash = await this.settlement.transferUsdcFromPlatform(
+        const decimals = this.solanaSettlement.getTokenDecimals('USDC');
+        const payoutAmount = BigInt(Math.round(payout * 10 ** decimals));
+
+        // Pay winner in USDC
+        txHash = await this.solanaSettlement.transferTokenFromPlatform(
           user.walletAddress,
-          payoutWei,
+          payoutAmount,
+          'USDC',
         );
+
+        // Send fee to fee wallet
+        const feeAmount = BigInt(Math.round((total - payout) * 10 ** decimals));
+        if (feeAmount > BigInt(0)) {
+          feeTxHash = await this.solanaSettlement.sendFeeToFeeWallet(feeAmount, 'USDC').catch((e) => {
+            this.logger.error(`Failed to send betting fee: ${e.message}`);
+            return null;
+          });
+        }
       }
     }
 
     await this.betModel.updateMany(
       { matchId, userId: new Types.ObjectId(userId), claimed: false },
-      { claimed: true },
+      { claimed: true, claimTxHash: txHash, feeTxHash },
     );
 
-    this.logger.log(`Bet claimed: user=${userId}, match=${matchId}, payout=${payout}, txHash=${txHash}`);
+    this.logger.log(`Bet claimed: user=${userId}, match=${matchId}, payout=${payout}, txHash=${txHash}, feeTxHash=${feeTxHash}`);
 
     return {
       txHash: txHash || `claim-${matchId}-${userId}`,
       matchId,
-      chain: 'base',
+      chain: 'solana',
     };
   }
 
@@ -410,7 +414,6 @@ export class BettingService implements OnModuleInit {
       const total = Object.values(betsByAgent).reduce((s, v) => s + v, 0);
 
       let outcome: 'won' | 'refund' = 'refund';
-      // Draw refund still charges platform fee
       let winnings = match.status === 'cancelled' ? total : total * (1 - BETTING_FEE_PERCENT / 100);
 
       if (match.status === 'completed' && match.result?.winnerId) {
@@ -432,7 +435,7 @@ export class BettingService implements OnModuleInit {
 
       claims.push({
         matchId: mId,
-        chain: 'base',
+        chain: 'solana',
         gameType: match.gameType,
         outcome,
         betsByAgent,
@@ -444,9 +447,6 @@ export class BettingService implements OnModuleInit {
     return { claims };
   }
 
-  /* ────────────────────────────────────────────────────────
-     INTERNAL: Get all agent IDs from a match
-     ──────────────────────────────────────────────────────── */
   private getMatchAgentIds(match: any): string[] {
     if (!match.agents) return [];
     return Object.values(match.agents)
@@ -454,16 +454,9 @@ export class BettingService implements OnModuleInit {
       .map((a: any) => a.agentId.toString());
   }
 
-  /* ────────────────────────────────────────────────────────
-     INTERNAL: Calculate pool aggregates (N agents)
-     Pari-mutuel: odds adjust dynamically as more bets
-     come in on a given agent (like football betting).
-     The more people bet on an agent, the lower the payout.
-     ──────────────────────────────────────────────────────── */
   private async calculatePool(matchId: string, match?: any): Promise<PoolResult> {
     const bets = await this.betModel.find({ matchId }).lean();
 
-    // Resolve agentId for each bet (compat with old onAgentA bets)
     const resolvedBets = bets.map((b) => ({
       ...b,
       resolvedAgentId: b.onAgentId || (match && b.onAgentA != null
@@ -471,7 +464,6 @@ export class BettingService implements OnModuleInit {
         : 'unknown'),
     }));
 
-    // Aggregate by agentId
     const agentTotals = new Map<string, { total: number; count: number }>();
     for (const bet of resolvedBets) {
       const curr = agentTotals.get(bet.resolvedAgentId) || { total: 0, count: 0 };
@@ -480,7 +472,6 @@ export class BettingService implements OnModuleInit {
       agentTotals.set(bet.resolvedAgentId, curr);
     }
 
-    // Ensure all match agents appear even with 0 bets
     if (match) {
       for (const id of this.getMatchAgentIds(match)) {
         if (!agentTotals.has(id)) agentTotals.set(id, { total: 0, count: 0 });
@@ -502,10 +493,8 @@ export class BettingService implements OnModuleInit {
       });
     }
 
-    // Sort by totalBets desc (favorite first)
     agents.sort((x, y) => y.totalBets - x.totalBets);
 
-    // Legacy compat fields
     const agentA = match ? match.agents.a.agentId.toString() : '';
     const agentB = match ? match.agents.b.agentId.toString() : '';
 
@@ -518,9 +507,6 @@ export class BettingService implements OnModuleInit {
     };
   }
 
-  /* ────────────────────────────────────────────────────────
-     EVENT HANDLER: Auto-settle when match ends
-     ──────────────────────────────────────────────────────── */
   private async handleMatchSettlement(event: MatchEndedEvent): Promise<void> {
     const betsCount = await this.betModel.countDocuments({ matchId: event.matchId });
     if (betsCount === 0) return;
