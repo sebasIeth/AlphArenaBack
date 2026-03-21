@@ -3,10 +3,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Agent, User, Match } from '../database/schemas';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
-import { SettlementService } from '../settlement/settlement.service';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
-import { DEFAULT_ELO, TOKEN_DECIMALS } from '../common/constants/game.constants';
+import { DEFAULT_ELO } from '../common/constants/game.constants';
 
 @Injectable()
 export class PlayService {
@@ -17,7 +16,6 @@ export class PlayService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     private readonly matchmakingService: MatchmakingService,
-    private readonly settlement: SettlementService,
     private readonly settlementRouter: SettlementRouterService,
     private readonly humanMoveService: HumanMoveService,
   ) {}
@@ -53,7 +51,7 @@ export class PlayService {
 
     // Verify wallet balance (skip for zero-stake)
     if (stakeAmount > 0) {
-      const chain = agent.chain || 'base';
+      const chain = agent.chain || 'solana';
       const [tokenBalance, nativeBalance] = await Promise.all([
         this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress),
         this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress),
@@ -66,15 +64,6 @@ export class PlayService {
       }
 
       // Solana: platform wallet pays tx fees, agents don't need SOL
-      if (chain !== 'solana') {
-        const minNative = 0.0001;
-        const nativeName = chain === 'celo' ? 'CELO' : 'ETH';
-        if (parseFloat(nativeBalance) < minNative) {
-          throw new BadRequestException(
-            `Insufficient ${nativeName} for gas. You have ${nativeBalance} but need at least ${minNative}. Deposit to ${agent.walletAddress}`,
-          );
-        }
-      }
     }
 
     agent.status = 'queued';
@@ -168,16 +157,16 @@ export class PlayService {
       throw new NotFoundException('User wallet not found');
     }
 
-    // For play balance, use EVM by default (play page uses user wallet, not agent wallet)
-    const [alpha, eth] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(user.walletAddress),
-      this.settlement.getAgentEthBalance(user.walletAddress),
+    const chain = 'solana';
+    const [alpha, nativeBalance] = await Promise.all([
+      this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress),
+      this.settlementRouter.getAgentNativeBalance(chain, user.walletAddress),
     ]);
 
     return {
       walletAddress: user.walletAddress,
       alpha,
-      eth,
+      nativeBalance,
     };
   }
 
@@ -245,15 +234,16 @@ export class PlayService {
       throw new BadRequestException('User does not have a wallet');
     }
 
-    const balanceStr = await this.settlement.getAgentUsdcBalance(user.walletAddress);
+    const chain = 'solana';
+    const balanceStr = await this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress);
     const balance = parseFloat(balanceStr);
     if (balance < amount) {
       throw new BadRequestException(`Insufficient balance: you have ${balance.toFixed(2)} ALPHA but tried to withdraw ${amount}`);
     }
 
-    const decimals = this.settlementRouter.getTokenDecimals('base');
+    const decimals = this.settlementRouter.getTokenDecimals(chain);
     const amountWei = BigInt(Math.round(amount * 10 ** decimals));
-    const txHash = await this.settlement.transferUsdcFromAgent(user.walletPrivateKey, to, amountWei);
+    const txHash = await this.settlementRouter.transferTokenFromAgent(chain, user.walletPrivateKey, to, amountWei);
 
     this.logger.log(`Withdraw: user=${userId}, amount=${amount}, to=${to}, txHash=${txHash}`);
     return { txHash, amount, to };

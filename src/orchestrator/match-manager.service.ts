@@ -7,7 +7,7 @@ import {
   PokerGameState,
 } from '../common/types';
 import {
-  MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS, TOKEN_DECIMALS,
+  MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS,
   POKER_SMALL_BLIND, POKER_BIG_BLIND, POKER_MAX_HANDS,
 } from '../common/constants/game.constants';
 import { Match, Agent } from '../database/schemas';
@@ -23,7 +23,6 @@ import { PokerTurnControllerService } from './poker-turn-controller.service';
 import { createInitialState as createPokerInitialState, isMatchOver as isPokerMatchOver } from '../game-engine/poker';
 import { ResultHandlerService } from './result-handler.service';
 import { EventBusService } from './event-bus.service';
-import { SettlementService } from '../settlement/settlement.service';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { MatchClock } from './match-clock';
 
@@ -66,7 +65,6 @@ export class MatchManagerService {
     private readonly pokerTurnController: PokerTurnControllerService,
     private readonly resultHandler: ResultHandlerService,
     private readonly eventBus: EventBusService,
-    private readonly settlement: SettlementService,
     private readonly settlementRouter: SettlementRouterService,
     private readonly gameEngine: GameEngineService,
   ) {}
@@ -961,7 +959,7 @@ export class MatchManagerService {
       await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
       const erroredMatch = await this.matchModel.findById(matchId).lean();
       if (erroredMatch?.txHashes?.escrow) {
-        try { await this.settlement.refund(matchId); } catch {}
+        try { await this.settlementRouter.refund('solana', matchId); } catch {}
       }
       if (matchState) {
         await Promise.all(
@@ -995,7 +993,7 @@ export class MatchManagerService {
           .map((a) => this.agentModel.updateOne({ _id: a.agentId, status: 'in_match' }, { status: 'idle' })),
       );
       if (match.txHashes?.escrow) {
-        try { await this.settlement.refund(matchId); } catch {}
+        try { await this.settlementRouter.refund('solana', matchId); } catch {}
       } else {
         this.logger.log(`Skipping refund for match ${matchId} — no escrow was deposited`);
       }
@@ -1020,7 +1018,7 @@ export class MatchManagerService {
           this.logger.error(`Cannot recover match ${matchId}: agent doc(s) missing`);
           await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
           if (match.txHashes?.escrow) {
-            try { await this.settlement.refund(matchId); } catch {}
+            try { await this.settlementRouter.refund('solana', matchId); } catch {}
           }
           await Promise.all([
             this.agentModel.updateOne({ _id: match.agents.a.agentId }, { status: 'idle' }),
@@ -1242,7 +1240,7 @@ export class MatchManagerService {
         this.logger.error(`Failed to recover match ${matchId}: ${message}`);
         await this.matchModel.updateOne({ _id: matchId }, { status: 'error', endedAt: new Date() });
         if (match.txHashes?.escrow) {
-          try { await this.settlement.refund(matchId); } catch {}
+          try { await this.settlementRouter.refund('solana', matchId); } catch {}
         }
         await Promise.all([
           this.agentModel.updateOne({ _id: match.agents.a.agentId }, { status: 'idle' }),

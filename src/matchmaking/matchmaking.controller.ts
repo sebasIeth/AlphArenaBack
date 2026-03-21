@@ -8,7 +8,6 @@ import { AuthPayload } from '../common/types';
 import { Agent, Match } from '../database/schemas';
 import { IsString, MinLength, IsNumber, Min, Max, IsIn, IsOptional } from 'class-validator';
 import { MIN_STAKE, MAX_STAKE } from '../common/constants/game.constants';
-import { SettlementService } from '../settlement/settlement.service';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { X402StakeController } from '../settlement/x402-stake.controller';
 
@@ -30,7 +29,6 @@ export class MatchmakingController {
     private readonly matchmakingService: MatchmakingService,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
-    private readonly settlement: SettlementService,
     private readonly settlementRouter: SettlementRouterService,
     private readonly x402Stake: X402StakeController,
   ) {}

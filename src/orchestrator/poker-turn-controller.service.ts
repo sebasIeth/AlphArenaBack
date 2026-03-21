@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Side, Board } from '../common/types';
 import {
   PokerGameState, PokerMoveRequest, PokerMoveResponse,
@@ -416,8 +416,8 @@ export class PokerTurnControllerService {
       // Use direct collection insert to bypass Mongoose schema validation
       // (the MoveDoc schema was designed for reversi/chess board games)
       await this.moveModel.collection.insertOne({
-        matchId: new (require('mongoose').Types.ObjectId)(matchId),
-        agentId: new (require('mongoose').Types.ObjectId)(agentId),
+        matchId: new Types.ObjectId(matchId),
+        agentId: new Types.ObjectId(agentId),
         side, moveNumber,
         moveData: {
           row: 0, col: 0,

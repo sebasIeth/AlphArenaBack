@@ -8,11 +8,9 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
-import { SettlementService } from '../settlement/settlement.service';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { Agent, User } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
-import { TOKEN_DECIMALS } from '../common/constants/game.constants';
 
 class TestConnectionDto {
   @IsString()
@@ -51,7 +49,6 @@ class WithdrawDto {
 export class AgentsController {
   constructor(
     private readonly agentsService: AgentsService,
-    private readonly settlement: SettlementService,
     private readonly settlementRouter: SettlementRouterService,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
@@ -139,7 +136,7 @@ export class AgentsController {
     const userDoc = await this.userModel.findById(user.userId);
     if (!userDoc?.walletAddress) throw new BadRequestException('User does not have a wallet address');
 
-    const chain = agent.chain || 'base';
+    const chain = agent.chain || 'solana';
     const decimals = this.settlementRouter.getTokenDecimals(chain);
     const amountToken = BigInt(Math.round(dto.amount * 10 ** decimals));
     const privKey = decrypt(agent.walletPrivateKey);

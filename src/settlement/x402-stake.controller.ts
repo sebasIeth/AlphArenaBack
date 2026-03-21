@@ -39,14 +39,28 @@ export class X402StakeController {
     verifiedAt: Date;
     gameType: string;
   }>();
-  // Track used tx hashes to prevent replay attacks
-  private readonly usedTxHashes = new Set<string>();
+  // Track used tx hashes to prevent replay attacks (with timestamps for expiry)
+  private readonly usedTxHashes = new Map<string, number>();
+
+  private readonly TX_HASH_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
   constructor(
     private readonly x402Verifier: X402VerifierService,
     private readonly solanaSettlement: SolanaSettlementService,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
-  ) {}
+  ) {
+    // Periodically clean up expired tx hashes every 10 minutes
+    setInterval(() => this.cleanupExpiredTxHashes(), 10 * 60 * 1000);
+  }
+
+  private cleanupExpiredTxHashes(): void {
+    const now = Date.now();
+    for (const [hash, timestamp] of this.usedTxHashes) {
+      if (now - timestamp > this.TX_HASH_EXPIRY_MS) {
+        this.usedTxHashes.delete(hash);
+      }
+    }
+  }
 
   /**
    * x402-style stake payment endpoint.
@@ -109,7 +123,8 @@ export class X402StakeController {
 
     // Has payment proof → verify on-chain
     // Prevent replay: same tx can't be used twice
-    if (this.usedTxHashes.has(paymentTx)) {
+    const txTimestamp = this.usedTxHashes.get(paymentTx);
+    if (txTimestamp !== undefined && Date.now() - txTimestamp < this.TX_HASH_EXPIRY_MS) {
       return res.status(HttpStatus.BAD_REQUEST).json({
         paid: false,
         error: 'This transaction has already been used for a payment. Send a new transaction.',
@@ -134,7 +149,7 @@ export class X402StakeController {
     }
 
     // Mark tx as used (prevent replay)
-    this.usedTxHashes.add(paymentTx);
+    this.usedTxHashes.set(paymentTx, Date.now());
 
     // Store verified payment
     this.verifiedPayments.set(agentId, {

@@ -1,12 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { PLATFORM_FEE_PERCENT, TOKEN_DECIMALS } from '../common/constants/game.constants';
+import { PLATFORM_FEE_PERCENT } from '../common/constants/game.constants';
 import { MatchResultReason, Side } from '../common/types';
 import { Match, Agent } from '../database/schemas';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
-import { SettlementService } from '../settlement/settlement.service';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
 
 const ELO_K = 32;
@@ -43,7 +42,6 @@ export class ResultHandlerService {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     private readonly activeMatches: ActiveMatchesService,
     private readonly eventBus: EventBusService,
-    private readonly settlement: SettlementService,
     private readonly settlementRouter: SettlementRouterService,
   ) {}
 
