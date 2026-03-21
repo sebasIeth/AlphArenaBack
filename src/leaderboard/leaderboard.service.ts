@@ -21,6 +21,9 @@ export class LeaderboardService {
     const ranked = agents.map((agent: any, index: number) => ({
       rank: index + 1, agentId: agent._id, name: agent.name, eloRating: agent.eloRating,
       stats: agent.stats, gameTypes: agent.gameTypes, userId: agent.userId,
+      totalEarnings: agent.stats?.totalEarnings || 0,
+      earningsAlpha: agent.stats?.earningsAlpha || 0,
+      earningsUsdc: agent.stats?.earningsUsdc || 0,
       xUsername: agent.xUsername || null, claimStatus: agent.claimStatus || null,
     }));
 
@@ -34,6 +37,8 @@ export class LeaderboardService {
         $group: {
           _id: '$userId',
           totalEarnings: { $sum: '$stats.totalEarnings' },
+          earningsAlpha: { $sum: { $ifNull: ['$stats.earningsAlpha', 0] } },
+          earningsUsdc: { $sum: { $ifNull: ['$stats.earningsUsdc', 0] } },
           totalWins: { $sum: '$stats.wins' },
           totalLosses: { $sum: '$stats.losses' },
           totalDraws: { $sum: '$stats.draws' },
@@ -55,6 +60,7 @@ export class LeaderboardService {
       return {
         rank: index + 1, userId: entry._id, username: (user as any)?.username ?? 'Unknown',
         walletAddress: (user as any)?.walletAddress ?? '', totalEarnings: entry.totalEarnings,
+        earningsAlpha: entry.earningsAlpha || 0, earningsUsdc: entry.earningsUsdc || 0,
         totalWins: entry.totalWins, totalLosses: entry.totalLosses, totalDraws: entry.totalDraws,
         totalMatches: entry.totalMatches, agentCount: entry.agentCount, bestElo: entry.bestElo,
       };
