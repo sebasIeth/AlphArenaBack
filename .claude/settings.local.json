@@ -13,7 +13,13 @@
       "Bash(git commit:*)",
       "Bash(mongosh:*)",
       "Bash(ssh:*)",
-      "Bash(bash deploy.sh 2>&1)"
+      "Bash(bash deploy.sh 2>&1)",
+      "Bash(bash deploy.sh)",
+      "Bash(npx mongosh:*)",
+      "Bash(grep:*)",
+      "Bash(git remote:*)",
+      "Bash(curl:*)",
+      "Bash(file:*)"
     ]
   }
 }

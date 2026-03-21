@@ -23,8 +23,10 @@ const server = http.createServer((req, res) => {
             else if (la.canCall) { action = 'call'; }
             else { action = 'fold'; }
           }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ action, amount }));
+          setTimeout(() => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ action, amount }));
+          }, 3000);
           return;
         }
         const moves = data.legalMoves || [];

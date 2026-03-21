@@ -49,4 +49,4 @@ echo "==> 4/4 Checking status..."
 sshpass -p "$VPS_PASSWORD" ssh -o StrictHostKeyChecking=no "$VPS_HOST" "docker ps --filter name=alpharena-api"
 
 echo ""
-echo "Deploy complete! API running at http://187.77.63.248:3001"
+echo "Deploy complete! API running at http://187.77.47.112:3001"
