@@ -81,7 +81,7 @@ export class RandomScheduledMatchJob {
 
     const scheduledAgents = picked.map((agent, idx) => ({
       agentId: agent._id,
-      userId: agent.userId,
+      userId: agent.userId ?? undefined,
       name: agent.name,
       elo: agent.eloRating,
       color: COLORS[idx % COLORS.length],
@@ -117,7 +117,7 @@ export class RandomScheduledMatchJob {
       stakeAmount: stake,
       agents: scheduledAgents,
       matchId: matchDoc._id.toString(),
-      createdBy: new Types.ObjectId(picked[0].userId),
+      createdBy: picked[0].userId ? new Types.ObjectId(picked[0].userId) : undefined,
     });
 
     this.logger.log(

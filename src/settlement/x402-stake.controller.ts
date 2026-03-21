@@ -40,7 +40,7 @@ export class X402StakeController {
 
     const agent = await this.agentModel.findById(agentId);
     if (!agent) throw new BadRequestException('Agent not found');
-    if (agent.userId.toString() !== user.userId) throw new BadRequestException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== user.userId) throw new BadRequestException('You do not own this agent');
 
     const platformWallet = this.solanaSettlement.getPlatformWalletAddress();
     const usdcMint = this.solanaSettlement.getTokenMint('USDC');

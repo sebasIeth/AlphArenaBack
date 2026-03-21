@@ -35,6 +35,24 @@ export class AgentApiController {
     return this.agentApiService.getAgentStatus(agent);
   }
 
+  /**
+   * Link an unlinked agent to a user account.
+   * The agent authenticates via API key and passes the userId to link to.
+   */
+  @Post('link')
+  @UseGuards(ApiKeyAuthGuard)
+  @HttpCode(200)
+  async linkToUser(@CurrentAgent() agent: Agent, @Body() body: { userId: string }) {
+    if (!body.userId) throw new BadRequestException('userId is required');
+    const agentDoc = agent as any;
+    if (agentDoc.userId) {
+      throw new BadRequestException('Agent is already linked to a user. Unlink first or create a new agent.');
+    }
+    agentDoc.userId = body.userId;
+    await agentDoc.save();
+    return { message: 'Agent linked to user', agentId: agentDoc._id.toString(), userId: body.userId };
+  }
+
   @Post('queue/join')
   @UseGuards(ApiKeyAuthGuard)
   @HttpCode(200)

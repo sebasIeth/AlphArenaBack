@@ -38,13 +38,30 @@ export class MatchmakingController {
   async join(@CurrentUser() user: AuthPayload, @Body() dto: JoinQueueDto) {
     const agent = await this.agentModel.findById(dto.agentId);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (agent.status !== 'idle') throw new BadRequestException(`Agent cannot join queue because its status is "${agent.status}". It must be "idle".`);
     if (!agent.gameTypes.includes(dto.gameType)) throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet. Please recreate the agent.');
 
-    // Verify agent wallet has sufficient on-chain balance (skip for zero-stake)
+    // Verify agent wallet has on-chain balance
     const matchToken = dto.token || 'ALPHA';
+    const chain = agent.chain || 'solana';
+
+    // Always check that agent has SOME balance (at least in any token)
+    if (dto.stakeAmount === 0) {
+      const [alphaBalance, usdcBalance, solBalance] = await Promise.all([
+        this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'ALPHA').catch(() => '0'),
+        this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'USDC').catch(() => '0'),
+        this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress).catch(() => '0'),
+      ]);
+      const totalBalance = parseFloat(alphaBalance) + parseFloat(usdcBalance) + parseFloat(solBalance);
+      if (totalBalance <= 0) {
+        throw new BadRequestException(
+          `Agent wallet has no balance. Deposit ALPHA, USDC, or SOL to ${agent.walletAddress} before playing.`,
+        );
+      }
+    }
+
     if (dto.stakeAmount > 0) {
       if (matchToken === 'USDC') {
         // USDC: always requires x402 pre-payment
@@ -66,7 +83,6 @@ export class MatchmakingController {
         }
       } else {
         // ALPHA: direct balance check
-        const chain = agent.chain || 'solana';
         const tokenBalance = await this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, matchToken);
         if (parseFloat(tokenBalance) < dto.stakeAmount) {
           throw new BadRequestException(
@@ -93,7 +109,7 @@ export class MatchmakingController {
   async cancel(@CurrentUser() user: AuthPayload, @Body() dto: CancelQueueDto) {
     const agent = await this.agentModel.findById(dto.agentId);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (agent.status !== 'queued') throw new BadRequestException(`Agent is not in the queue (current status: "${agent.status}")`);
 
     await this.matchmakingService.leaveQueue(dto.agentId);
@@ -106,7 +122,7 @@ export class MatchmakingController {
   async status(@CurrentUser() user: AuthPayload, @Param('agentId') agentId: string) {
     const agent = await this.agentModel.findById(agentId);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
 
     const queueEntry = await this.matchmakingService.getQueueStatus(agentId);
 

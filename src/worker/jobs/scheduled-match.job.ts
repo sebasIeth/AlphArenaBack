@@ -74,7 +74,7 @@ export class ScheduledMatchJob {
         // Build MatchAgentInput
         const inputA: MatchAgentInput = {
           agentId: agentA._id.toString(),
-          userId: agentA.userId.toString(),
+          userId: agentA.userId?.toString() ?? '',
           name: agentA.name,
           endpointUrl: agentA.endpointUrl || '',
           eloRating: agentA.eloRating,
@@ -87,7 +87,7 @@ export class ScheduledMatchJob {
 
         const inputB: MatchAgentInput = {
           agentId: agentB._id.toString(),
-          userId: agentB.userId.toString(),
+          userId: agentB.userId?.toString() ?? '',
           name: agentB.name,
           endpointUrl: agentB.endpointUrl || '',
           eloRating: agentB.eloRating,

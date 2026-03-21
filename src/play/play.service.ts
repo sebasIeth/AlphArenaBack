@@ -180,7 +180,7 @@ export class PlayService {
     }
 
     const agent = await this.agentModel.findById(pendingAgentId);
-    if (!agent || agent.userId.toString() !== userId || agent.type !== 'human') {
+    if (!agent || (agent.userId && agent.userId.toString() !== userId) || agent.type !== 'human') {
       throw new BadRequestException('You are not the human player in this match.');
     }
 

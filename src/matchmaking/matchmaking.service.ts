@@ -39,7 +39,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       return this.orchestrator.startMatch(
         {
           agentId: agentA._id.toString(),
-          userId: agentA.userId.toString(),
+          userId: agentA.userId?.toString() ?? '',
           name: agentA.name,
           endpointUrl: agentA.endpointUrl ?? '',
           eloRating: agentA.eloRating,
@@ -52,7 +52,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         },
         {
           agentId: agentB._id.toString(),
-          userId: agentB.userId.toString(),
+          userId: agentB.userId?.toString() ?? '',
           name: agentB.name,
           endpointUrl: agentB.endpointUrl ?? '',
           eloRating: agentB.eloRating,
@@ -73,7 +73,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       const agentDocs = await Promise.all(agentIds.map(id => this.agentModel.findById(id)));
       const agents = agentDocs.filter(Boolean).map(a => ({
         agentId: a!._id.toString(),
-        userId: a!.userId.toString(),
+        userId: a!.userId?.toString() ?? '',
         name: a!.name,
         endpointUrl: a!.endpointUrl ?? '',
         eloRating: a!.eloRating,

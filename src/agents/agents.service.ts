@@ -83,14 +83,14 @@ export class AgentsService {
   async findById(id: string, userId: string) {
     const agent = await this.agentModel.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
     return { agent };
   }
 
   async update(id: string, userId: string, dto: UpdateAgentDto) {
     const agent = await this.agentModel.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
     if (agent.status === 'disabled') throw new BadRequestException('Cannot update a disabled agent');
 
     if (dto.name && dto.name !== agent.name) {
@@ -116,7 +116,7 @@ export class AgentsService {
   async remove(id: string, userId: string) {
     const agent = await this.agentModel.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
     if (agent.status === 'in_match') throw new BadRequestException('Cannot disable an agent that is currently in a match');
 
     // If queued, remove from queue first
@@ -135,7 +135,7 @@ export class AgentsService {
   async healthCheck(id: string, userId: string) {
     const agent = await this.agentModel.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
 
     if (agent.type !== 'openclaw') {
       throw new BadRequestException('Health check is only available for OpenClaw agents');
@@ -155,7 +155,7 @@ export class AgentsService {
   async chatWithAgent(id: string, userId: string, message: string) {
     const agent = await this.agentModel.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== userId) throw new ForbiddenException('You do not own this agent');
 
     if (agent.type !== 'openclaw') {
       throw new BadRequestException('Chat is only available for OpenClaw agents');

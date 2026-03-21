@@ -155,7 +155,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
     // Verify the user owns the agent
     const agent = await this.agentModel.findById(pendingAgentId);
-    if (!agent || agent.userId.toString() !== user.userId || agent.type !== 'human') {
+    if (!agent || (agent.userId && agent.userId.toString() !== user.userId) || agent.type !== 'human') {
       client.emit('message', { type: 'error', data: { message: 'You are not the human player in this match.' } });
       return;
     }

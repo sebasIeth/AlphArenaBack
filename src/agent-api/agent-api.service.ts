@@ -2,12 +2,15 @@ import { Injectable, Logger, BadRequestException, NotFoundException, ConflictExc
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { randomBytes, createHash, randomUUID } from 'crypto';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { Keypair } from '@solana/web3.js';
+import * as bs58Module from 'bs58';
+const bs58Encode = (bs58Module as any).default?.encode ?? (bs58Module as any).encode;
 import { Agent, Match } from '../database/schemas';
 import { ActiveMatchesService } from '../orchestrator/active-matches.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { MatchManagerService } from '../orchestrator/match-manager.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { getLegalActions } from '../game-engine/poker';
 import { RegisterAgentDto } from './dto/register.dto';
 import { JoinQueueDto } from './dto/queue.dto';
@@ -24,6 +27,7 @@ export class AgentApiService {
     private readonly humanMoveService: HumanMoveService,
     private readonly matchmakingService: MatchmakingService,
     private readonly matchManager: MatchManagerService,
+    private readonly settlementRouter: SettlementRouterService,
   ) {}
 
   async registerAgent(dto: RegisterAgentDto) {
@@ -32,17 +36,20 @@ export class AgentApiService {
     const prefix = rawKey.substring(0, 11); // "ak_" + 8 hex chars
     const claimToken = randomUUID();
 
-    // Generate a dedicated wallet for this agent
-    const privKey = generatePrivateKey();
-    const account = privateKeyToAccount(privKey);
+    // Generate a dedicated Solana wallet for this agent
+    const { encrypt } = require('../common/crypto.util');
+    const keypair = Keypair.generate();
+    const walletAddress = keypair.publicKey.toBase58();
+    const walletPrivateKey = encrypt(bs58Encode(keypair.secretKey));
 
     const agent = await this.agentModel.create({
       userId: dto.userId ?? null as any,
       name: dto.name,
       type: 'pull',
       gameTypes: dto.gameTypes,
-      walletAddress: dto.walletAddress ?? account.address,
-      walletPrivateKey: privKey,
+      walletAddress: dto.walletAddress ?? walletAddress,
+      walletPrivateKey,
+      chain: 'solana',
       apiKeyHash: hash,
       apiKeyPrefix: prefix,
       claimToken,
@@ -111,6 +118,24 @@ export class AgentApiService {
 
     if (!agent.gameTypes.includes(dto.gameType)) {
       throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
+    }
+
+    if (!agent.walletAddress) {
+      throw new BadRequestException('Agent does not have a wallet.');
+    }
+
+    // Verify agent wallet has some balance
+    const chain = (agent as any).chain || 'solana';
+    const [alphaBalance, usdcBalance, solBalance] = await Promise.all([
+      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'ALPHA').catch(() => '0'),
+      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'USDC').catch(() => '0'),
+      this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress).catch(() => '0'),
+    ]);
+    const totalBalance = parseFloat(alphaBalance) + parseFloat(usdcBalance) + parseFloat(solBalance);
+    if (totalBalance <= 0) {
+      throw new BadRequestException(
+        `Agent wallet has no balance. Deposit ALPHA, USDC, or SOL to ${agent.walletAddress} before playing.`,
+      );
     }
 
     agent.status = 'queued';

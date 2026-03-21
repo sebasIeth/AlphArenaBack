@@ -33,8 +33,8 @@ export const AgentStatsSubDocSchema = SchemaFactory.createForClass(AgentStatsSub
 
 @Schema({ timestamps: true, collection: 'agents', toJSON: { virtuals: true }, toObject: { virtuals: true } })
 export class Agent extends Document {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
-  userId: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false, index: true, default: null })
+  userId: Types.ObjectId | null;
 
   @Prop({ required: true })
   name: string;

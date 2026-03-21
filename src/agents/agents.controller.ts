@@ -117,7 +117,7 @@ export class AgentsController {
   async getBalance(@CurrentUser() user: AuthPayload, @Param('id') id: string) {
     const agent = await this.agentModel.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet');
 
     const chain = agent.chain || 'solana';
@@ -138,7 +138,7 @@ export class AgentsController {
   ) {
     const agent = await this.agentModel.findById(id).select('+walletPrivateKey');
     if (!agent) throw new NotFoundException('Agent not found');
-    if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
+    if (agent.userId && agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (!agent.walletAddress || !agent.walletPrivateKey) throw new BadRequestException('Agent does not have a wallet');
 
     const destination = dto.toAddress || (await this.userModel.findById(user.userId))?.walletAddress;
