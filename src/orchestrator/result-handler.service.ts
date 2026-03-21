@@ -151,7 +151,8 @@ export class ResultHandlerService {
       const outcome = winningSide === side ? 'win' : winningSide ? 'loss' : 'draw';
       const eloDelta = eloChanges[side] ?? 0;
       const earnings = winningSide === side ? this.calculateEarnings(matchDoc) : 0;
-      await this.updateAgentStats(agent.agentId, outcome, eloDelta, earnings);
+      const token = matchDoc.token || 'ALPHA';
+      await this.updateAgentStats(agent.agentId, outcome, eloDelta, earnings, token);
     }
 
     this.eventBus.emit('match:ended', {
@@ -199,13 +200,18 @@ export class ResultHandlerService {
     outcome: 'win' | 'loss' | 'draw',
     eloDelta: number,
     earnings: number,
+    token: string = 'ALPHA',
   ): Promise<void> {
     try {
       const statsUpdate: Record<string, number> = { 'stats.totalMatches': 1 };
       if (outcome === 'win') statsUpdate['stats.wins'] = 1;
       else if (outcome === 'loss') statsUpdate['stats.losses'] = 1;
       else statsUpdate['stats.draws'] = 1;
-      if (earnings > 0) statsUpdate['stats.totalEarnings'] = earnings;
+      if (earnings > 0) {
+        statsUpdate['stats.totalEarnings'] = earnings;
+        if (token === 'USDC') statsUpdate['stats.earningsUsdc'] = earnings;
+        else statsUpdate['stats.earningsAlpha'] = earnings;
+      }
 
       await this.agentModel.updateOne(
         { _id: agentId },

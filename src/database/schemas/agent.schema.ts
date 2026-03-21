@@ -21,6 +21,12 @@ export class AgentStatsSubDoc {
 
   @Prop({ default: 0 })
   totalEarnings: number;
+
+  @Prop({ default: 0 })
+  earningsAlpha: number;
+
+  @Prop({ default: 0 })
+  earningsUsdc: number;
 }
 
 export const AgentStatsSubDocSchema = SchemaFactory.createForClass(AgentStatsSubDoc);
@@ -67,7 +73,7 @@ export class Agent extends Document {
   @Prop({
     type: AgentStatsSubDocSchema,
     default: () => ({
-      wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0,
+      wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0, earningsAlpha: 0, earningsUsdc: 0,
     }),
   })
   stats: AgentStatsSubDoc;
