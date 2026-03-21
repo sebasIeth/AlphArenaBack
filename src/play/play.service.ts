@@ -229,25 +229,31 @@ export class PlayService {
     return agent;
   }
 
-  async withdraw(userId: string, amount: number, to: string) {
+  async withdraw(userId: string, amount: number, to: string, token: string = 'ALPHA') {
     const user = await this.userModel.findById(userId).select('+walletPrivateKey');
     if (!user) throw new NotFoundException('User not found');
     if (!user.walletAddress || !user.walletPrivateKey) {
       throw new BadRequestException('User does not have a wallet');
     }
 
-    const chain = 'solana';
-    const balanceStr = await this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress);
-    const balance = parseFloat(balanceStr);
-    if (balance < amount) {
-      throw new BadRequestException(`Insufficient balance: you have ${balance.toFixed(2)} ALPHA but tried to withdraw ${amount}`);
+    if (token === 'SOL') {
+      throw new BadRequestException('SOL withdrawals coming soon. Use ALPHA or USDC.');
     }
 
-    const decimals = this.settlementRouter.getTokenDecimals(chain);
-    const amountWei = BigInt(Math.round(amount * 10 ** decimals));
-    const txHash = await this.settlementRouter.transferTokenFromAgent(chain, user.walletPrivateKey, to, amountWei);
+    const chain = 'solana';
+    const balanceStr = await this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress, token);
+    const balance = parseFloat(balanceStr);
+    if (balance < amount) {
+      throw new BadRequestException(`Insufficient balance: you have ${balance.toFixed(2)} ${token} but tried to withdraw ${amount}`);
+    }
 
-    this.logger.log(`Withdraw: user=${userId}, amount=${amount}, to=${to}, txHash=${txHash}`);
-    return { txHash, amount, to };
+    const decimals = this.settlementRouter.getTokenDecimals(chain, token);
+    const amountWei = BigInt(Math.round(amount * 10 ** decimals));
+    const { decrypt } = require('../common/crypto.util');
+    const privKey = decrypt(user.walletPrivateKey);
+    const txHash = await this.settlementRouter.transferTokenFromAgent(chain, privKey, to, amountWei, token);
+
+    this.logger.log(`Withdraw: user=${userId}, amount=${amount} ${token}, to=${to}, txHash=${txHash}`);
+    return { txHash, amount, to, token, chain };
   }
 }

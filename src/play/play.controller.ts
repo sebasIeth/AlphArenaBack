@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Body, UseGuards, HttpCode } from '@nestjs/common';
-import { IsString, IsNumber, Min, Max, IsIn } from 'class-validator';
+import { IsString, IsNumber, Min, Max, IsIn, IsOptional } from 'class-validator';
 import { PlayService } from './play.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -18,11 +18,15 @@ class JoinDto {
 
 class WithdrawDto {
   @IsNumber()
-  @Min(0.01)
+  @Min(0.001)
   amount: number;
 
   @IsString()
   to: string;
+
+  @IsOptional()
+  @IsString()
+  token?: string;
 }
 
 class MoveDto {
@@ -60,7 +64,7 @@ export class PlayController {
 
   @Post('withdraw')
   async withdraw(@CurrentUser() user: AuthPayload, @Body() dto: WithdrawDto) {
-    return this.playService.withdraw(user.userId, dto.amount, dto.to);
+    return this.playService.withdraw(user.userId, dto.amount, dto.to, dto.token);
   }
 
   @Post('move')

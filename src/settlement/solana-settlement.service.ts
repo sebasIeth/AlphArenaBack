@@ -159,10 +159,10 @@ export class SolanaSettlementService implements OnModuleInit {
     );
 
     const sourceAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!, this.platformKeypair!, token.mint, agentKeypair.publicKey,
+      this.connection!, this.platformKeypair!, token.mint, agentKeypair.publicKey, true,
     );
     const destAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!, this.platformKeypair!, token.mint, toPublicKey,
+      this.connection!, this.platformKeypair!, token.mint, toPublicKey, true,
     );
 
     const tx = new Transaction().add(
@@ -202,10 +202,10 @@ export class SolanaSettlementService implements OnModuleInit {
     );
 
     const sourceAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!, this.platformKeypair!, token.mint, this.platformKeypair!.publicKey,
+      this.connection!, this.platformKeypair!, token.mint, this.platformKeypair!.publicKey, true,
     );
     const destAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!, this.platformKeypair!, token.mint, toPublicKey,
+      this.connection!, this.platformKeypair!, token.mint, toPublicKey, true,
     );
 
     const txSig = await transfer(
@@ -243,7 +243,7 @@ export class SolanaSettlementService implements OnModuleInit {
     try {
       const owner = new PublicKey(walletAddress);
       const ata = await getOrCreateAssociatedTokenAccount(
-        this.connection!, this.platformKeypair!, token.mint, owner,
+        this.connection!, this.platformKeypair!, token.mint, owner, true,
       );
       const accountInfo = await getAccount(this.connection!, ata.address);
       const rawBalance = accountInfo.amount;

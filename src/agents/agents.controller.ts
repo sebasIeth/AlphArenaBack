@@ -40,8 +40,16 @@ class ChatMessageDto {
 
 class WithdrawDto {
   @IsNumber()
-  @Min(0.01, { message: 'Minimum withdrawal is 0.01 USDC' })
+  @Min(0.001, { message: 'Minimum withdrawal is 0.001' })
   amount: number;
+
+  @IsOptional()
+  @IsString()
+  toAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  token?: string;
 }
 
 @Controller('agents')
@@ -133,16 +141,26 @@ export class AgentsController {
     if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (!agent.walletAddress || !agent.walletPrivateKey) throw new BadRequestException('Agent does not have a wallet');
 
-    const userDoc = await this.userModel.findById(user.userId);
-    if (!userDoc?.walletAddress) throw new BadRequestException('User does not have a wallet address');
+    const destination = dto.toAddress || (await this.userModel.findById(user.userId))?.walletAddress;
+    if (!destination) throw new BadRequestException('No destination address provided');
 
     const chain = agent.chain || 'solana';
-    const decimals = this.settlementRouter.getTokenDecimals(chain);
+    const token = dto.token || 'ALPHA';
+    const decimals = this.settlementRouter.getTokenDecimals(chain, token);
     const amountToken = BigInt(Math.round(dto.amount * 10 ** decimals));
     const privKey = decrypt(agent.walletPrivateKey);
 
-    const txHash = await this.settlementRouter.transferTokenFromAgent(chain, privKey, userDoc.walletAddress, amountToken);
-    return { txHash, amount: dto.amount, to: userDoc.walletAddress, chain };
+    let txHash: string | null;
+    if (token === 'SOL') {
+      // SOL transfer: native transfer (agent pays fee since it has SOL)
+      // For now, use SPL transfer pattern — SOL native transfer needs different handling
+      throw new BadRequestException('SOL withdrawals coming soon. Use ALPHA or USDC.');
+    } else {
+      // ALPHA or USDC: SPL token transfer (platform sponsors gas)
+      txHash = await this.settlementRouter.transferTokenFromAgent(chain, privKey, destination, amountToken, token);
+    }
+
+    return { txHash, amount: dto.amount, to: destination, chain, token };
   }
 
   @Delete(':id')
