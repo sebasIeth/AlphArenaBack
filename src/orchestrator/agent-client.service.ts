@@ -73,7 +73,7 @@ export class AgentClientService {
   async requestReversiMoveFromOpenClaw(
     agent: AgentInfo,
     moveRequest: MoveRequest,
-    context?: { side: 'a' | 'b'; agentId: string },
+    context?: { side: string; agentId: string },
   ): Promise<MoveResponse> {
     const openclawAgent: OpenClawAgentInfo = {
       openclawUrl: agent.openclawUrl!,
@@ -99,7 +99,7 @@ export class AgentClientService {
   async requestChessMoveFromOpenClaw(
     agent: AgentInfo,
     moveRequest: ChessMoveRequest,
-    context?: { side: 'a' | 'b'; agentId: string },
+    context?: { side: string; agentId: string },
   ): Promise<ChessMoveResponse> {
     const openclawAgent: OpenClawAgentInfo = {
       openclawUrl: agent.openclawUrl!,
@@ -128,7 +128,7 @@ export class AgentClientService {
   async requestPokerMoveFromOpenClaw(
     agent: AgentInfo,
     moveRequest: PokerMoveRequest,
-    context?: { side: 'a' | 'b'; agentId: string },
+    context?: { side: string; agentId: string },
   ): Promise<PokerMoveResponse> {
     const openclawAgent: OpenClawAgentInfo = {
       openclawUrl: agent.openclawUrl!,

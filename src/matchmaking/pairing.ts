@@ -2,6 +2,8 @@ import { ELO_MATCH_RANGE } from '../common/constants/game.constants';
 import { QueueEntryData } from './matchmaking.queue';
 
 const STAKE_TOLERANCE = 0.2;
+const POKER_MAX_PLAYERS = 9;
+const POKER_MIN_PLAYERS = 2;
 
 function stakesCompatible(stakeA: number, stakeB: number): boolean {
   const larger = Math.max(stakeA, stakeB);
@@ -10,6 +12,9 @@ function stakesCompatible(stakeA: number, stakeB: number): boolean {
   return smaller >= larger * (1 - STAKE_TOLERANCE);
 }
 
+/**
+ * For chess/marrakech: pair 2 agents.
+ */
 export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryData, QueueEntryData]> {
   const sorted = [...waitingEntries].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
   const paired = new Set<string>();
@@ -24,7 +29,6 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       if (paired.has(entryB.agentId)) continue;
       if (entryA.gameType !== entryB.gameType) continue;
       if (process.env.NODE_ENV !== 'development' && entryA.userId === entryB.userId) {
-        // Allow same-user pairing when one side is a human player
         const hasHumanOrPull = entryA.agentType === 'human' || entryB.agentType === 'human'
           || entryA.agentType === 'pull' || entryB.agentType === 'pull';
         if (!hasHumanOrPull) continue;
@@ -39,4 +43,33 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
     }
   }
   return pairs;
+}
+
+/**
+ * For poker: group 2-9 compatible agents into a single table.
+ */
+export function findPokerGroup(waitingEntries: QueueEntryData[]): QueueEntryData[] | null {
+  if (waitingEntries.length < POKER_MIN_PLAYERS) return null;
+
+  const sorted = [...waitingEntries].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+  const group: QueueEntryData[] = [sorted[0]];
+
+  for (let i = 1; i < sorted.length && group.length < POKER_MAX_PLAYERS; i++) {
+    const candidate = sorted[i];
+    const baseStake = group[0].stakeAmount;
+
+    // Same token required
+    if ((candidate.token || 'ALPHA') !== (group[0].token || 'ALPHA')) continue;
+
+    // ELO range check against the group average
+    const avgElo = group.reduce((s, e) => s + e.eloRating, 0) / group.length;
+    if (Math.abs(candidate.eloRating - avgElo) > ELO_MATCH_RANGE * 1.5) continue;
+
+    // Stake compatibility
+    if (!stakesCompatible(baseStake, candidate.stakeAmount)) continue;
+
+    group.push(candidate);
+  }
+
+  return group.length >= POKER_MIN_PLAYERS ? group : null;
 }

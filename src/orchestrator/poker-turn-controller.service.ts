@@ -12,6 +12,7 @@ import {
   dealNewHand, getLegalActions, applyAction,
   isStreetOver, advanceStreet, resolveShowdown,
   resolveFold, isHandOver, isMatchOver,
+  getActiveSides, getActableSides, countPlayersInHand,
 } from '../game-engine/poker';
 import { AgentClientService } from './agent-client.service';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
@@ -24,7 +25,7 @@ const MAX_CONSECUTIVE_ERRORS = 3;
 export interface PokerHandResult {
   pokerState: PokerGameState;
   matchOver: boolean;
-  winner: 'a' | 'b' | null;
+  winner: string | null;
 }
 
 @Injectable()
@@ -44,6 +45,15 @@ export class PokerTurnControllerService {
   private consecutiveErrors = new Map<string, number>();
   /** Track total action count across all hands per match */
   private totalActionCounts = new Map<string, number>();
+
+  /** Build a Record<string, number> of all players' stacks */
+  private buildStacksRecord(state: PokerGameState): Record<string, number> {
+    const stacks: Record<string, number> = {};
+    for (const [side, player] of Object.entries(state.players)) {
+      stacks[side] = player.stack;
+    }
+    return stacks;
+  }
 
   async executeHand(
     matchState: ActiveMatchState,
@@ -72,13 +82,13 @@ export class PokerTurnControllerService {
 
     // 2. Loop through streets
     while (!isHandOver(state)) {
-      // Both all-in → skip to showdown
-      if (state.players.a.isAllIn && state.players.b.isAllIn) {
+      // All non-folded players are all-in → skip to showdown
+      if (getActableSides(state).length === 0) {
         break;
       }
 
-      // One player all-in and street is over → advance
-      const oneAllIn = state.players.a.isAllIn || state.players.b.isAllIn;
+      // Only one (or zero) player can still act → advance streets automatically
+      const fewActable = getActableSides(state).length <= 1;
 
       // Within each street, loop through actions
       while (!isStreetOver(state) && !isHandOver(state)) {
@@ -94,6 +104,17 @@ export class PokerTurnControllerService {
         const legalActions = getLegalActions(state);
         const timeRemainingMs = matchState.clock ? matchState.clock.getTimeRemainingMs() : 0;
 
+        // Build otherPlayers array from all players except current
+        const otherPlayers = Object.entries(state.players)
+          .filter(([side]) => side !== currentSide)
+          .map(([side, p]) => ({
+            side,
+            stack: p.stack,
+            currentBet: p.currentBet,
+            hasFolded: p.hasFolded,
+            isAllIn: p.isAllIn,
+          }));
+
         const moveRequest: PokerMoveRequest = {
           matchId,
           gameType: 'poker',
@@ -104,9 +125,8 @@ export class PokerTurnControllerService {
           communityCards: state.communityCards,
           pot: state.pot,
           yourStack: state.players[currentSide].stack,
-          opponentStack: state.players[currentSide === 'a' ? 'b' : 'a'].stack,
           yourCurrentBet: state.players[currentSide].currentBet,
-          opponentCurrentBet: state.players[currentSide === 'a' ? 'b' : 'a'].currentBet,
+          otherPlayers,
           legalActions,
           actionHistory: state.actionHistory,
           blinds: { small: state.smallBlind, big: state.bigBlind },
@@ -133,6 +153,7 @@ export class PokerTurnControllerService {
 
         try {
           if (agent.type === 'human' || agent.type === 'pull') {
+            const playerStacks = this.buildStacksRecord(state);
             this.eventBus.emit('match:your_turn', {
               matchId,
               side: currentSide,
@@ -145,7 +166,7 @@ export class PokerTurnControllerService {
               pokerHoleCards: state.players[currentSide].holeCards,
               pokerCommunityCards: state.communityCards,
               pokerPot: state.pot,
-              pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
+              pokerPlayerStacks: playerStacks,
               pokerStreet: state.street,
               pokerHandNumber: state.handNumber,
               pokerIsDealer: state.players[currentSide].isDealer,
@@ -216,19 +237,20 @@ export class PokerTurnControllerService {
 
         // Emit match:move event (use pre-action hand/street so moves stay in the correct hand)
         const moveNumber = totalActions;
+        const playerStacks = this.buildStacksRecord(state);
         this.eventBus.emit('match:move', {
           matchId,
           side: currentSide,
           move: { row: 0, col: 0 },
           boardState: [] as unknown as Board,
-          score: { a: state.players.a.stack, b: state.players.b.stack },
+          score: playerStacks,
           moveNumber,
           thinkingTimeMs,
           pokerAction: { type: validatedAction.action, amount: validatedAction.amount },
           pokerStreet: streetBefore,
           pokerPot: state.pot,
           pokerCommunityCards: state.communityCards,
-          pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
+          pokerPlayerStacks: playerStacks,
           pokerHandNumber: handNumberBefore,
           pokerPlayers: this.buildPokerPlayersPublic(state),
         });
@@ -250,18 +272,19 @@ export class PokerTurnControllerService {
         await this.persistPokerState(matchId, state);
 
         // Emit street advance so spectators see community cards immediately
+        const playerStacks = this.buildStacksRecord(state);
         this.eventBus.emit('match:move', {
           matchId,
-          side: state.currentPlayerSide as 'a' | 'b',
+          side: state.currentPlayerSide,
           move: { row: 0, col: 0 },
           boardState: [] as unknown as Board,
-          score: { a: state.players.a.stack, b: state.players.b.stack },
+          score: playerStacks,
           moveNumber: state.actionHistory.length,
           thinkingTimeMs: 0,
           pokerStreet: state.street,
           pokerPot: state.pot,
           pokerCommunityCards: state.communityCards,
-          pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
+          pokerPlayerStacks: playerStacks,
           pokerHandNumber: state.handNumber,
           pokerPlayers: this.buildPokerPlayersPublic(state),
         });
@@ -269,18 +292,19 @@ export class PokerTurnControllerService {
         // If showdown after advance (river → showdown), break
         if (state.street === 'showdown') break;
 
-        // If one or both all-in, skip action loops and keep advancing
-        if (state.players.a.isAllIn && state.players.b.isAllIn) continue;
-        if (oneAllIn) continue;
+        // If all non-folded players are all-in, skip action loops and keep advancing
+        if (getActableSides(state).length === 0) continue;
+        if (fewActable) continue;
       }
     }
 
     // 3. Resolve hand — capture pot before it resets to 0
     const potBeforeResolve = state.pot;
     let handWinner: string | null = null;
-    if (state.players.a.hasFolded || state.players.b.hasFolded) {
-      const folderSide = state.players.a.hasFolded ? 'a' : 'b';
-      handWinner = folderSide === 'a' ? 'b' : 'a';
+    if (countPlayersInHand(state) <= 1) {
+      // Everyone but one player has folded
+      const activeSides = getActiveSides(state);
+      handWinner = activeSides.length === 1 ? activeSides[0] : null;
       state = resolveFold(state);
       this.logger.log(`Hand #${state.handNumber}: fold — handWinner=${handWinner} (match=${matchId})`);
     } else {
@@ -295,12 +319,14 @@ export class PokerTurnControllerService {
     await this.persistPokerState(matchId, state);
 
     // Save hand history with hole cards for replay (always reveal after hand ends)
+    const holeCards: Record<string, any> = {};
+    for (const [side, player] of Object.entries(state.players)) {
+      holeCards[side] = player.holeCards;
+    }
+
     const handHistory = {
       handNumber: state.handNumber,
-      holeCards: {
-        a: state.players.a.holeCards,
-        b: state.players.b.holeCards,
-      },
+      holeCards,
       communityCards: state.communityCards,
       result: state.showdownResult ? 'showdown' : 'fold',
       winner: handWinner,
@@ -315,18 +341,19 @@ export class PokerTurnControllerService {
     );
 
     // Emit hand result — always include hole cards so spectators can see them on rewind
+    const playerStacks = this.buildStacksRecord(state);
     this.eventBus.emit('match:move', {
       matchId,
-      side: (state.winner ?? state.currentPlayerSide) as 'a' | 'b',
+      side: state.winner ?? state.currentPlayerSide,
       move: { row: 0, col: 0 },
       boardState: [] as unknown as Board,
-      score: { a: state.players.a.stack, b: state.players.b.stack },
+      score: playerStacks,
       moveNumber: state.actionHistory.length,
       thinkingTimeMs: 0,
       pokerStreet: state.street,
       pokerPot: state.pot,
       pokerCommunityCards: state.communityCards,
-      pokerPlayerStacks: { a: state.players.a.stack, b: state.players.b.stack },
+      pokerPlayerStacks: playerStacks,
       pokerHandNumber: state.handNumber,
       pokerPlayers: this.buildPokerPlayersWithCards(state),
       pokerShowdownResult: state.showdownResult ?? null,
@@ -341,30 +368,42 @@ export class PokerTurnControllerService {
     return {
       pokerState: state,
       matchOver,
-      winner: matchOver ? (state.winner as 'a' | 'b' | null) : null,
+      winner: matchOver ? (state.winner ?? null) : null,
     };
   }
 
   /** Public view — no hole cards (safe to broadcast to spectators) */
   private buildPokerPlayersPublic(state: PokerGameState) {
-    return [
-      { seatIndex: 0, side: 'a', stack: state.players.a.stack, holeCards: [] as { rank: string; suit: string }[], currentBet: state.players.a.currentBet, hasFolded: state.players.a.hasFolded, isAllIn: state.players.a.isAllIn, isDealer: state.players.a.isDealer },
-      { seatIndex: 1, side: 'b', stack: state.players.b.stack, holeCards: [] as { rank: string; suit: string }[], currentBet: state.players.b.currentBet, hasFolded: state.players.b.hasFolded, isAllIn: state.players.b.isAllIn, isDealer: state.players.b.isDealer },
-    ];
+    return Object.entries(state.players).map(([side, player]) => ({
+      seatIndex: state.seatOrder.indexOf(side),
+      side,
+      stack: player.stack,
+      holeCards: [] as { rank: string; suit: string }[],
+      currentBet: player.currentBet,
+      hasFolded: player.hasFolded,
+      isAllIn: player.isAllIn,
+      isDealer: player.isDealer,
+    }));
   }
 
   /** Full view — includes hole cards (only for showdown) */
   private buildPokerPlayersWithCards(state: PokerGameState) {
-    return [
-      { seatIndex: 0, side: 'a', stack: state.players.a.stack, holeCards: state.players.a.holeCards, currentBet: state.players.a.currentBet, hasFolded: state.players.a.hasFolded, isAllIn: state.players.a.isAllIn, isDealer: state.players.a.isDealer },
-      { seatIndex: 1, side: 'b', stack: state.players.b.stack, holeCards: state.players.b.holeCards, currentBet: state.players.b.currentBet, hasFolded: state.players.b.hasFolded, isAllIn: state.players.b.isAllIn, isDealer: state.players.b.isDealer },
-    ];
+    return Object.entries(state.players).map(([side, player]) => ({
+      seatIndex: state.seatOrder.indexOf(side),
+      side,
+      stack: player.stack,
+      holeCards: player.holeCards,
+      currentBet: player.currentBet,
+      hasFolded: player.hasFolded,
+      isAllIn: player.isAllIn,
+      isDealer: player.isDealer,
+    }));
   }
 
   private validateAction(
     response: PokerMoveResponse,
     legalActions: PokerLegalActions,
-    side: 'a' | 'b',
+    side: string,
   ): { action: PokerActionType; amount?: number } {
     const action = response.action;
 
@@ -384,10 +423,10 @@ export class PokerTurnControllerService {
     return { action: 'fold' };
   }
 
-  private handleTimeout(matchState: ActiveMatchState, side: 'a' | 'b'): void {
+  private handleTimeout(matchState: ActiveMatchState, side: string): void {
     const { matchId } = matchState;
     const newTimeouts = { ...matchState.timeouts };
-    newTimeouts[side] += 1;
+    newTimeouts[side] = (newTimeouts[side] || 0) + 1;
     this.activeMatches.updateMatch(matchId, { timeouts: newTimeouts });
 
     this.matchModel.updateOne(
@@ -404,7 +443,7 @@ export class PokerTurnControllerService {
   private async saveMove(
     matchId: string,
     agentId: string,
-    side: Side,
+    side: string,
     moveNumber: number,
     action: { action: PokerActionType; amount?: number },
     stateAfter: PokerGameState,
@@ -413,6 +452,12 @@ export class PokerTurnControllerService {
     street?: string,
   ): Promise<void> {
     try {
+      // Build pokerPlayers record from all players
+      const pokerPlayers: Record<string, { stack: number; currentBet: number; hasFolded: boolean; isAllIn: boolean }> = {};
+      for (const [s, p] of Object.entries(stateAfter.players)) {
+        pokerPlayers[s] = { stack: p.stack, currentBet: p.currentBet, hasFolded: p.hasFolded, isAllIn: p.isAllIn };
+      }
+
       // Use direct collection insert to bypass Mongoose schema validation
       // (the MoveDoc schema was designed for reversi/chess board games)
       await this.moveModel.collection.insertOne({
@@ -427,13 +472,10 @@ export class PokerTurnControllerService {
           pokerStreet: street ?? stateAfter.street,
           pokerCommunityCards: stateAfter.communityCards,
           pokerPot: stateAfter.pot,
-          pokerPlayers: {
-            a: { stack: stateAfter.players.a.stack, currentBet: stateAfter.players.a.currentBet, hasFolded: stateAfter.players.a.hasFolded, isAllIn: stateAfter.players.a.isAllIn },
-            b: { stack: stateAfter.players.b.stack, currentBet: stateAfter.players.b.currentBet, hasFolded: stateAfter.players.b.hasFolded, isAllIn: stateAfter.players.b.isAllIn },
-          },
+          pokerPlayers,
         },
         boardStateAfter: [],
-        scoreAfter: { a: stateAfter.players.a.stack, b: stateAfter.players.b.stack },
+        scoreAfter: this.buildStacksRecord(stateAfter),
         thinkingTimeMs,
         timestamp: new Date(),
       });
@@ -453,7 +495,7 @@ export class PokerTurnControllerService {
         pokerState: stateToSave,
         currentTurn: state.currentPlayerSide,
         moveCount: totalMoveCount,
-        scores: { a: state.players.a.stack, b: state.players.b.stack },
+        scores: this.buildStacksRecord(state),
       },
     ).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);

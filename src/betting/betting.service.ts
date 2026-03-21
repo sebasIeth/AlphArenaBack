@@ -140,7 +140,7 @@ export class BettingService implements OnModuleInit {
     if (isSettled) onChainState = 'settled';
     else if (isRefunded) onChainState = 'refunded';
 
-    let winner: { side: 'a' | 'b'; agentName: string; agentId: string } | null = null;
+    let winner: { side: string; agentName: string; agentId: string } | null = null;
     if (match.result?.winnerId) {
       const winningSide = match.result.winnerId.toString() === match.agents.a.agentId.toString() ? 'a' : 'b';
       winner = {

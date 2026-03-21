@@ -96,7 +96,7 @@ export class OpenClawClientService {
       legalMoves: [number, number][];
       moveNumber: number;
     },
-    context?: { side: 'a' | 'b'; agentId: string },
+    context?: { side: string; agentId: string },
   ): Promise<OpenClawMoveResult> {
     const { matchId, board, yourPiece, legalMoves, moveNumber } = gameState;
 
@@ -140,7 +140,7 @@ export class OpenClawClientService {
     state: MarrakechGameState,
     validActions: MarrakechValidActions,
     playerIndex: number,
-    context?: { side: 'a' | 'b'; agentId: string },
+    context?: { side: string; agentId: string },
   ): Promise<MarrakechMoveResponse | null> {
     const message = this.buildMarrakechPrompt(phase, state, validActions, playerIndex);
 
@@ -218,7 +218,7 @@ export class OpenClawClientService {
       isCheck: boolean;
       moveHistory: ChessUciMove[];
     },
-    context?: { side: 'a' | 'b'; agentId: string },
+    context?: { side: string; agentId: string },
   ): Promise<OpenClawMoveResult> {
     const { matchId, fen, yourColor, legalMoves, moveNumber, isCheck, moveHistory } = gameState;
 
@@ -262,7 +262,7 @@ export class OpenClawClientService {
   async getPokerMove(
     agent: OpenClawAgentInfo,
     moveRequest: PokerMoveRequest,
-    context?: { side: 'a' | 'b'; agentId: string },
+    context?: { side: string; agentId: string },
   ): Promise<OpenClawMoveResult> {
     const { matchId, handNumber, street, yourHoleCards, communityCards, pot,
       yourStack, opponentStack, yourCurrentBet, opponentCurrentBet,

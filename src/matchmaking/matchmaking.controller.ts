@@ -9,7 +9,7 @@ import { Agent, Match } from '../database/schemas';
 import { IsString, MinLength, IsNumber, Min, Max, IsIn, IsOptional } from 'class-validator';
 import { MIN_STAKE, MAX_STAKE } from '../common/constants/game.constants';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
-import { X402StakeController } from '../settlement/x402-stake.controller';
+import { X402PaymentStore } from '../settlement/x402-payment-store.service';
 
 class JoinQueueDto {
   @IsString() @MinLength(1) agentId: string;
@@ -30,7 +30,7 @@ export class MatchmakingController {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     private readonly settlementRouter: SettlementRouterService,
-    private readonly x402Stake: X402StakeController,
+    private readonly x402PaymentStore: X402PaymentStore,
   ) {}
 
   @Post('join')
@@ -48,7 +48,7 @@ export class MatchmakingController {
     if (dto.stakeAmount > 0) {
       if (matchToken === 'USDC') {
         // USDC: always requires x402 pre-payment
-        const x402Payment = this.x402Stake.getVerifiedPayment(dto.agentId);
+        const x402Payment = this.x402PaymentStore.getPayment(dto.agentId);
         if (!x402Payment) {
           throw new BadRequestException(
             'USDC matches require x402 payment. POST to /x402/stake first, pay the USDC, then join the queue.',

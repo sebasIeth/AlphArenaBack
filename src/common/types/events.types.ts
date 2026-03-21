@@ -23,10 +23,10 @@ export interface MatchStartedEvent {
 
 export interface MatchMoveEvent {
   matchId: string;
-  side: 'a' | 'b';
+  side: string;
   move: { row: number; col: number };
   boardState: Board;
-  score: { a: number; b: number };
+  score: Record<string, number>;
   moveNumber: number;
   thinkingTimeMs: number;
   // Marrakech-specific
@@ -45,7 +45,7 @@ export interface MatchMoveEvent {
   pokerStreet?: string;
   pokerPot?: number;
   pokerCommunityCards?: { rank: string; suit: string }[];
-  pokerPlayerStacks?: { a: number; b: number };
+  pokerPlayerStacks?: Record<string, number>;
   pokerHandNumber?: number;
   pokerPlayers?: { seatIndex: number; side: string; stack: number; holeCards: { rank: string; suit: string }[]; currentBet: number; hasFolded: boolean; isAllIn: boolean; isDealer: boolean }[];
   pokerShowdownResult?: { winnerSide: string; winnerHand?: { rank: number; description: string }; loserHand?: { rank: number; description: string } } | null;
@@ -54,7 +54,7 @@ export interface MatchMoveEvent {
 
 export interface MatchTimeoutEvent {
   matchId: string;
-  side: 'a' | 'b';
+  side: string;
   timeoutCount: number;
 }
 
@@ -78,7 +78,7 @@ export interface MatchErrorEvent {
 
 export interface AgentThinkingEvent {
   matchId: string;
-  side: 'a' | 'b';
+  side: string;
   agentId: string;
   raw: string;
   moveNumber: number;
@@ -98,7 +98,7 @@ export interface MatchmakingMatchedEvent {
 
 export interface MatchYourTurnEvent {
   matchId: string;
-  side: 'a' | 'b';
+  side: string;
   gameType: string;
   board: Board;
   legalMoves: unknown[];
@@ -110,7 +110,7 @@ export interface MatchYourTurnEvent {
   pokerHoleCards?: { rank: string; suit: string }[];
   pokerCommunityCards?: { rank: string; suit: string }[];
   pokerPot?: number;
-  pokerPlayerStacks?: { a: number; b: number };
+  pokerPlayerStacks?: Record<string, number>;
   pokerStreet?: string;
   pokerHandNumber?: number;
   pokerIsDealer?: boolean;

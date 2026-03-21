@@ -5,7 +5,7 @@ interface PendingMove {
   resolve: (move: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
-  side: 'a' | 'b';
+  side: string;
   agentId: string;
 }
 
@@ -14,7 +14,7 @@ export class HumanMoveService {
   private readonly logger = new Logger(HumanMoveService.name);
   private readonly pendingMoves = new Map<string, PendingMove>();
 
-  waitForMove(matchId: string, side: 'a' | 'b', agentId: string, timeoutMs?: number): Promise<unknown> {
+  waitForMove(matchId: string, side: string, agentId: string, timeoutMs?: number): Promise<unknown> {
     return new Promise((resolve, reject) => {
       // Clean up any existing pending move for this match
       this.cancelPending(matchId);
@@ -62,7 +62,7 @@ export class HumanMoveService {
     return this.pendingMoves.has(matchId);
   }
 
-  getPendingSide(matchId: string): 'a' | 'b' | null {
+  getPendingSide(matchId: string): string | null {
     return this.pendingMoves.get(matchId)?.side ?? null;
   }
 
