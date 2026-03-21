@@ -77,29 +77,45 @@ export class BettingService implements OnModuleInit {
     if (!user) throw new NotFoundException('User not found');
     if (!user.walletAddress) throw new BadRequestException('No wallet linked to your account');
 
-    // Verify x402 USDC payment
-    if (!x402TxSignature) {
-      throw new BadRequestException(
-        'Bets require USDC payment via x402. POST to /x402/stake first to get payment requirements, then include x402TxSignature.',
-      );
-    }
-
-    const decimals = this.solanaSettlement.getTokenDecimals('USDC');
-    const expectedAmount = BigInt(Math.round(amount * 10 ** decimals));
+    // Spectator bets are always in USDC
     const platformWallet = this.solanaSettlement.getPlatformWalletAddress();
-
     if (!platformWallet) {
       throw new BadRequestException('Settlement not configured');
     }
 
-    // Verify the x402 payment on-chain
-    const verification = await this.x402Verifier.verifyStakePayment(x402TxSignature, expectedAmount, platformWallet);
+    let betTxHash: string | null = null;
 
-    if (!verification.valid) {
-      throw new BadRequestException(`Payment verification failed: ${verification.error}`);
+    if (x402TxSignature) {
+      // External x402 flow: verify on-chain payment
+      const decimals = this.solanaSettlement.getTokenDecimals('USDC');
+      const expectedAmount = BigInt(Math.round(amount * 10 ** decimals));
+      const verification = await this.x402Verifier.verifyStakePayment(x402TxSignature, expectedAmount, platformWallet);
+      if (!verification.valid) {
+        throw new BadRequestException(`Payment verification failed: ${verification.error}`);
+      }
+      betTxHash = x402TxSignature;
+    } else {
+      // Custodial flow: transfer USDC from user wallet to platform
+      const userDoc = await this.userModel.findById(userId).select('+walletPrivateKey');
+      if (!userDoc?.walletPrivateKey) throw new BadRequestException('User wallet not configured');
+
+      // Check USDC balance
+      const usdcBalance = await this.solanaSettlement.getAgentTokenBalance(userDoc.walletAddress!, 'USDC');
+      if (parseFloat(usdcBalance) < amount) {
+        throw new BadRequestException(`Insufficient USDC balance: you have ${usdcBalance} but tried to bet ${amount}`);
+      }
+
+      const { decrypt } = require('../common/crypto.util');
+      const privKey = decrypt(userDoc.walletPrivateKey);
+      const decimals = this.solanaSettlement.getTokenDecimals('USDC');
+      const amountAtomic = BigInt(Math.round(amount * 10 ** decimals));
+      betTxHash = await this.solanaSettlement.transferTokenFromAgent(privKey, platformWallet, amountAtomic, 'USDC');
+      if (!betTxHash) throw new BadRequestException('USDC transfer failed');
     }
 
-    const onAgentA = onAgentId === match.agents.a.agentId.toString();
+    // Find which side the betted agent is on
+    const agentSides = Object.entries(match.agents as Record<string, any>);
+    const onAgentA = agentSides.find(([, v]) => v.agentId?.toString() === onAgentId)?.[0] === 'a';
 
     const bet = await this.betModel.create({
       matchId,
@@ -108,19 +124,20 @@ export class BettingService implements OnModuleInit {
       onAgentId,
       onAgentA,
       amount,
-      txHash: x402TxSignature,
+      txHash: betTxHash,
       chain: 'solana',
       token: 'USDC',
     });
 
-    this.logger.log(`Bet placed: user=${userId}, match=${matchId}, onAgent=${onAgentId}, amount=${amount}, txHash=${x402TxSignature}`);
+    this.logger.log(`Bet placed: user=${userId}, match=${matchId}, onAgent=${onAgentId}, amount=${amount} USDC, txHash=${betTxHash}`);
 
     return {
-      txHash: x402TxSignature,
+      txHash: betTxHash,
       matchId,
       onAgentId,
       amount,
       chain: 'solana',
+      token: 'USDC',
     };
   }
 

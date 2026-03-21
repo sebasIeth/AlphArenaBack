@@ -7,6 +7,7 @@ import { Agent } from '../database/schemas';
 import { MATCHMAKING_INTERVAL_MS, MATCHMAKING_COUNTDOWN_MS } from '../common/constants/game.constants';
 import { OrchestratorService } from '../orchestrator/orchestrator.service';
 import { EventBusService } from '../orchestrator/event-bus.service';
+import { X402PaymentStore } from '../settlement/x402-payment-store.service';
 
 @Injectable()
 export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
@@ -22,6 +23,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     private readonly orchestrator: OrchestratorService,
     private readonly eventBus: EventBusService,
+    private readonly x402PaymentStore: X402PaymentStore,
   ) {}
 
   async onModuleInit() {
