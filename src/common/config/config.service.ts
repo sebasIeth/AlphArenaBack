@@ -106,6 +106,31 @@ export class ConfigService {
     return process.env.TWITTER_BEARER_TOKEN;
   }
 
+  // ── Solana Settlement ──
+  get solanaRpcUrl(): string | undefined {
+    return process.env.SOLANA_RPC_URL;
+  }
+
+  get solanaPrivateKey(): string | undefined {
+    return process.env.SOLANA_PRIVATE_KEY;
+  }
+
+  get solanaAlphaMint(): string | undefined {
+    return process.env.SOLANA_ALPHA_MINT;
+  }
+
+  get solanaUsdcMint(): string | undefined {
+    return process.env.SOLANA_USDC_MINT;
+  }
+
+  get solanaFeeWallet(): string | undefined {
+    return process.env.SOLANA_FEE_WALLET;
+  }
+
+  get solanaFeeWalletKey(): string | undefined {
+    return process.env.SOLANA_FEE_WALLET_KEY;
+  }
+
   private getRequired(key: string): string {
     const value = process.env[key];
     if (!value) {

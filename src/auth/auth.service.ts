@@ -3,7 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { Keypair } from '@solana/web3.js';
+import * as bs58 from 'bs58';
 import * as crypto from 'crypto';
 import { User } from '../database/schemas';
 import { ConfigService } from '../common/config/config.service';
@@ -55,15 +56,14 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Auto-generate wallet for the user
-    const privKey = generatePrivateKey();
-    const account = privateKeyToAccount(privKey);
+    // Auto-generate Solana wallet for the user
+    const keypair = Keypair.generate();
 
     const user = await this.userModel.create({
       username,
       passwordHash,
-      walletAddress: account.address,
-      walletPrivateKey: privKey,
+      walletAddress: keypair.publicKey.toBase58(),
+      walletPrivateKey: bs58.default.encode(keypair.secretKey),
       email: email ?? null,
       emailVerified: !!email,
       balance: 0,

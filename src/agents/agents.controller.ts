@@ -8,10 +8,9 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthPayload } from '../common/types';
-import { SettlementService } from '../settlement/settlement.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { Agent, User } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
-import { TOKEN_DECIMALS } from '../common/constants/game.constants';
 
 class TestConnectionDto {
   @IsString()
@@ -50,7 +49,7 @@ class WithdrawDto {
 export class AgentsController {
   constructor(
     private readonly agentsService: AgentsService,
-    private readonly settlement: SettlementService,
+    private readonly settlementRouter: SettlementRouterService,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
@@ -113,12 +112,14 @@ export class AgentsController {
     if (agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet');
 
-    const [usdc, eth] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(agent.walletAddress),
-      this.settlement.getAgentEthBalance(agent.walletAddress),
+    const chain = agent.chain || 'solana';
+    const [alpha, usdc, sol] = await Promise.all([
+      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'ALPHA'),
+      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'USDC'),
+      this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress),
     ]);
 
-    return { walletAddress: agent.walletAddress, usdc, eth };
+    return { walletAddress: agent.walletAddress, alpha, usdc, sol, chain };
   }
 
   @Post(':id/withdraw')
@@ -135,11 +136,13 @@ export class AgentsController {
     const userDoc = await this.userModel.findById(user.userId);
     if (!userDoc?.walletAddress) throw new BadRequestException('User does not have a wallet address');
 
-    const amountUsdc = BigInt(Math.round(dto.amount * 10 ** TOKEN_DECIMALS));
+    const chain = agent.chain || 'solana';
+    const decimals = this.settlementRouter.getTokenDecimals(chain);
+    const amountToken = BigInt(Math.round(dto.amount * 10 ** decimals));
     const privKey = decrypt(agent.walletPrivateKey);
 
-    const txHash = await this.settlement.transferUsdcFromAgent(privKey, userDoc.walletAddress, amountUsdc);
-    return { txHash, amount: dto.amount, to: userDoc.walletAddress };
+    const txHash = await this.settlementRouter.transferTokenFromAgent(chain, privKey, userDoc.walletAddress, amountToken);
+    return { txHash, amount: dto.amount, to: userDoc.walletAddress, chain };
   }
 
   @Delete(':id')

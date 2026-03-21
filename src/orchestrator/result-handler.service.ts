@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { PLATFORM_FEE_PERCENT, TOKEN_DECIMALS } from '../common/constants/game.constants';
+import { PLATFORM_FEE_PERCENT } from '../common/constants/game.constants';
 import { MatchResultReason, Side } from '../common/types';
 import { Match, Agent } from '../database/schemas';
 import { ActiveMatchesService, ActiveMatchState } from './active-matches.service';
 import { EventBusService } from './event-bus.service';
-import { SettlementService } from '../settlement/settlement.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 
 const ELO_K = 32;
 
@@ -42,7 +42,7 @@ export class ResultHandlerService {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     private readonly activeMatches: ActiveMatchesService,
     private readonly eventBus: EventBusService,
-    private readonly settlement: SettlementService,
+    private readonly settlementRouter: SettlementRouterService,
   ) {}
 
   async handleMatchEnd(
@@ -78,22 +78,46 @@ export class ResultHandlerService {
       eloOutcome,
     );
 
+    const matchChain = matchDoc.chain || 'solana';
+    const matchToken = matchDoc.token || 'ALPHA';
+    const tokenDecimals = this.settlementRouter.getTokenDecimals(matchChain, matchToken);
+
     let payoutTxHash: string | null = null;
+    let feeTxHash: string | null = null;
     if (matchDoc.potAmount > 0) {
       try {
+        const potAmountToken = BigInt(matchDoc.potAmount) * BigInt(10 ** tokenDecimals);
+        const platformFeeToken = potAmountToken * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
+
         if (winnerId && winningSide) {
-          const potAmountUsdc = BigInt(matchDoc.potAmount) * BigInt(10 ** TOKEN_DECIMALS);
-          const platformFeeUsdc = potAmountUsdc * BigInt(PLATFORM_FEE_PERCENT) / BigInt(100);
-          const payoutAmountUsdc = potAmountUsdc - platformFeeUsdc;
+          const payoutAmountToken = potAmountToken - platformFeeToken;
 
           const winnerWallet = matchState.agents[winningSide].walletAddress;
           if (!winnerWallet) {
             this.logger.error(`No wallet address for winner (side=${winningSide}) in match ${matchId}`);
           } else {
-            payoutTxHash = await this.settlement.payout(matchId, winnerWallet, payoutAmountUsdc);
+            payoutTxHash = await this.settlementRouter.payout(matchChain, matchId, winnerWallet, payoutAmountToken, matchToken);
           }
         } else {
-          payoutTxHash = await this.settlement.refund(matchId);
+          // Draw refund: each agent gets their stake back minus their share of the fee
+          const agentCount = Object.values(matchState.agents).filter((a: any) => a.walletAddress).length;
+          const feePerAgent = platformFeeToken / BigInt(agentCount);
+          const stakeAmountToken = BigInt(matchDoc.stakeAmount) * BigInt(10 ** tokenDecimals);
+          const refundPerAgent = stakeAmountToken - feePerAgent;
+
+          const refundTargets = Object.values(matchState.agents)
+            .filter((a: any) => a.walletAddress)
+            .map((a: any) => ({ address: a.walletAddress as string, amount: refundPerAgent }));
+          payoutTxHash = await this.settlementRouter.refund(matchChain, matchId, refundTargets, matchToken);
+        }
+
+        // Send fee to dedicated fee wallet
+        if (platformFeeToken > BigInt(0)) {
+          feeTxHash = await this.settlementRouter.sendFee(matchChain, platformFeeToken, matchToken).catch((e: unknown) => {
+            const msg = e instanceof Error ? e.message : String(e);
+            this.logger.error(`Failed to send fee to fee wallet for match ${matchId}: ${msg}`);
+            return null;
+          });
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -107,7 +131,7 @@ export class ResultHandlerService {
       winnerId: winnerId ?? null,
       reason,
       finalScore,
-      totalMoves: gameState.moveNumber,
+      totalMoves: matchDoc.moveCount || gameState.moveNumber,
       eloChange: eloChanges,
     };
 
@@ -119,6 +143,7 @@ export class ResultHandlerService {
         currentBoard: gameState.board,
         endedAt: new Date(),
         ...(payoutTxHash ? { 'txHashes.payout': payoutTxHash } : {}),
+        ...(feeTxHash ? { 'txHashes.fee': feeTxHash } : {}),
       },
     );
 

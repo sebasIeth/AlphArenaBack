@@ -87,7 +87,11 @@ export class MatchesService {
     const match = await this.matchModel.findById(matchId).lean();
     if (!match) throw new NotFoundException('Match not found');
 
-    const moves = await this.moveModel.find({ matchId }).sort({ moveNumber: 1 }).lean();
+    // Use direct collection query — MoveDoc Mongoose model may map to 'movedocs' instead of 'moves'
+    const moves = await this.moveModel.db.collection('moves')
+      .find({ matchId: new Types.ObjectId(matchId) })
+      .sort({ moveNumber: 1 })
+      .toArray();
     return { matchId, moves, totalMoves: moves.length };
   }
 }

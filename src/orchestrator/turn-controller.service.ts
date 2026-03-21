@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { GameState, PlayerColor, Side, MoveRequest, Position } from '../common/types';
 import { MoveDoc } from '../database/schemas';
 import { Match } from '../database/schemas';
@@ -193,8 +193,9 @@ export class TurnControllerService {
     thinkingTimeMs: number,
   ): Promise<void> {
     try {
-      await this.moveModel.create({
-        matchId, agentId, side, moveNumber, moveData,
+      await this.moveModel.collection.insertOne({
+        matchId: new Types.ObjectId(matchId), agentId: new Types.ObjectId(agentId),
+        side, moveNumber, moveData,
         boardStateAfter, scoreAfter, thinkingTimeMs, timestamp: new Date(),
       });
     } catch (error: unknown) {

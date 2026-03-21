@@ -16,10 +16,10 @@ export class MoveDoc extends Document {
   moveNumber: number;
 
   @Prop({ type: Object, required: true })
-  moveData: { row: number; col: number };
+  moveData: Record<string, unknown>;
 
-  @Prop({ type: [[Number]], required: true })
-  boardStateAfter: number[][];
+  @Prop({ type: Object, default: [] })
+  boardStateAfter: unknown;
 
   @Prop({ type: Object, required: true })
   scoreAfter: { a: number; b: number };

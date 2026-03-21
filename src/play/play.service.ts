@@ -3,9 +3,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Agent, User, Match } from '../database/schemas';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
-import { SettlementService } from '../settlement/settlement.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
-import { DEFAULT_ELO, TOKEN_DECIMALS } from '../common/constants/game.constants';
+import { DEFAULT_ELO } from '../common/constants/game.constants';
 
 @Injectable()
 export class PlayService {
@@ -16,7 +16,7 @@ export class PlayService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     private readonly matchmakingService: MatchmakingService,
-    private readonly settlement: SettlementService,
+    private readonly settlementRouter: SettlementRouterService,
     private readonly humanMoveService: HumanMoveService,
   ) {}
 
@@ -49,22 +49,21 @@ export class PlayService {
       throw new BadRequestException('Wallet not found. Please contact support.');
     }
 
-    // Verify wallet balance
-    const [usdcBalance, ethBalance] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(agent.walletAddress),
-      this.settlement.getAgentEthBalance(agent.walletAddress),
-    ]);
+    // Verify wallet balance (skip for zero-stake)
+    if (stakeAmount > 0) {
+      const chain = agent.chain || 'solana';
+      const [tokenBalance, nativeBalance] = await Promise.all([
+        this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress),
+        this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress),
+      ]);
 
-    if (parseFloat(usdcBalance) < stakeAmount) {
-      throw new BadRequestException(
-        `Insufficient USDC balance. You have ${usdcBalance} USDC but need ${stakeAmount}. Deposit USDC to ${agent.walletAddress}`,
-      );
-    }
+      if (parseFloat(tokenBalance) < stakeAmount) {
+        throw new BadRequestException(
+          `Insufficient balance. You have ${tokenBalance} ALPHA but need ${stakeAmount}. Deposit to ${agent.walletAddress}`,
+        );
+      }
 
-    if (parseFloat(ethBalance) < 0.0001) {
-      throw new BadRequestException(
-        `Insufficient ETH for gas. You have ${ethBalance} ETH but need at least 0.0001. Deposit ETH to ${agent.walletAddress}`,
-      );
+      // Solana: platform wallet pays tx fees, agents don't need SOL
     }
 
     agent.status = 'queued';
@@ -158,15 +157,18 @@ export class PlayService {
       throw new NotFoundException('User wallet not found');
     }
 
-    const [usdc, eth] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(user.walletAddress),
-      this.settlement.getAgentEthBalance(user.walletAddress),
+    const chain = 'solana';
+    const [alpha, usdc, sol] = await Promise.all([
+      this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress, 'ALPHA'),
+      this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress, 'USDC'),
+      this.settlementRouter.getAgentNativeBalance(chain, user.walletAddress),
     ]);
 
     return {
       walletAddress: user.walletAddress,
+      alpha,
       usdc,
-      eth,
+      sol,
     };
   }
 
@@ -234,14 +236,16 @@ export class PlayService {
       throw new BadRequestException('User does not have a wallet');
     }
 
-    const balanceStr = await this.settlement.getAgentUsdcBalance(user.walletAddress);
+    const chain = 'solana';
+    const balanceStr = await this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress);
     const balance = parseFloat(balanceStr);
     if (balance < amount) {
       throw new BadRequestException(`Insufficient balance: you have ${balance.toFixed(2)} ALPHA but tried to withdraw ${amount}`);
     }
 
-    const amountWei = BigInt(Math.round(amount * 10 ** TOKEN_DECIMALS));
-    const txHash = await this.settlement.transferUsdcFromAgent(user.walletPrivateKey, to, amountWei);
+    const decimals = this.settlementRouter.getTokenDecimals(chain);
+    const amountWei = BigInt(Math.round(amount * 10 ** decimals));
+    const txHash = await this.settlementRouter.transferTokenFromAgent(chain, user.walletPrivateKey, to, amountWei);
 
     this.logger.log(`Withdraw: user=${userId}, amount=${amount}, to=${to}, txHash=${txHash}`);
     return { txHash, amount, to };

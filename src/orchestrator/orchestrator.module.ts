@@ -21,7 +21,7 @@ import { HumanMoveService } from './human-move.service';
     MongooseModule.forFeature([
       { name: Match.name, schema: MatchSchema },
       { name: Agent.name, schema: AgentSchema },
-      { name: MoveDoc.name, schema: MoveSchema },
+      { name: MoveDoc.name, schema: MoveSchema, collection: 'moves' },
     ]),
     GameEngineModule,
     forwardRef(() => SettlementModule),

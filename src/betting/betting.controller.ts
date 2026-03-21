@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Body, Param, UseGuards, HttpCode,
 } from '@nestjs/common';
-import { IsString, IsNumber, Min } from 'class-validator';
+import { IsString, IsNumber, Min, IsOptional } from 'class-validator';
 import { BettingService } from './betting.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -11,6 +11,7 @@ class PlaceBetDto {
   @IsString() matchId: string;
   @IsString() onAgentId: string;
   @IsNumber() @Min(0.01) amount: number;
+  @IsOptional() @IsString() x402TxSignature?: string;
 }
 
 class ClaimBetDto {
@@ -24,7 +25,7 @@ export class BettingController {
   /** Public — get betting contract addresses (stub) */
   @Get('contracts')
   getContracts() {
-    return { arena: '', alpha: '', chain: 'base' };
+    return { chain: 'solana', token: 'USDC' };
   }
 
   /** Public — get full betting info for a match */
@@ -64,7 +65,7 @@ export class BettingController {
     @CurrentUser() user: AuthPayload,
     @Body() dto: PlaceBetDto,
   ) {
-    return this.service.placeBet(user.userId, dto.matchId, dto.onAgentId, dto.amount);
+    return this.service.placeBet(user.userId, dto.matchId, dto.onAgentId, dto.amount, dto.x402TxSignature);
   }
 
   /** Auth — claim bet winnings/refund */

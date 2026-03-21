@@ -19,6 +19,9 @@ export class Transaction extends Document {
   @Prop({ required: true })
   amount: number;
 
+  @Prop({ type: String, default: 'base' })
+  chain: string;
+
   @Prop({ type: String, default: null })
   txHash: string;
 

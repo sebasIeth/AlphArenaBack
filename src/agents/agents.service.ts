@@ -7,7 +7,8 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 import { DEFAULT_ELO } from '../common/constants/game.constants';
 import { OpenClawWsService } from '../openclaw-ws';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { Keypair } from '@solana/web3.js';
+import * as bs58 from 'bs58';
 
 @Injectable()
 export class AgentsService {
@@ -53,19 +54,21 @@ export class AgentsService {
       agentData.openclawToken = dto.openclawToken;
       agentData.openclawAgentId = dto.openclawAgentId || 'main';
 
-      // Generate a dedicated wallet for this agent
-      const privKey = generatePrivateKey();
-      const account = privateKeyToAccount(privKey);
-      agentData.walletAddress = account.address;
-      agentData.walletPrivateKey = privKey;
+      // Generate a dedicated Solana wallet for this agent
+      const keypair = Keypair.generate();
+      agentData.walletAddress = keypair.publicKey.toBase58();
+      agentData.walletPrivateKey = bs58.default.encode(keypair.secretKey);
     } else {
       agentData.endpointUrl = dto.endpointUrl;
 
-      // Generate a dedicated wallet for this agent
-      const privKey = generatePrivateKey();
-      const account = privateKeyToAccount(privKey);
-      agentData.walletAddress = account.address;
-      agentData.walletPrivateKey = privKey;
+      // Generate a dedicated Solana wallet for this agent
+      const keypair = Keypair.generate();
+      agentData.walletAddress = keypair.publicKey.toBase58();
+      agentData.walletPrivateKey = bs58.default.encode(keypair.secretKey);
+    }
+
+    if (dto.chain) {
+      agentData.chain = dto.chain;
     }
 
     const agent = await this.agentModel.create(agentData);

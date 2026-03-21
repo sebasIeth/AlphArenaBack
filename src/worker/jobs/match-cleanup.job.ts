@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Match, Agent } from '../../database/schemas';
+import { ActiveMatchesService } from '../../orchestrator/active-matches.service';
+import { HumanMoveService } from '../../orchestrator/human-move.service';
 
 const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -12,6 +14,8 @@ export class MatchCleanupJob {
   constructor(
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    private readonly activeMatches: ActiveMatchesService,
+    private readonly humanMoveService: HumanMoveService,
   ) {}
 
   async run(): Promise<void> {
@@ -59,8 +63,20 @@ export class MatchCleanupJob {
       { $set: { status: 'idle' } },
     );
 
+    // Clean up in-memory state for stale matches
+    let removedFromMemory = 0;
+    for (const match of staleMatches) {
+      const matchId = match._id.toString();
+      const matchState = this.activeMatches.getMatch(matchId);
+      if (matchState?.clock) matchState.clock.stop();
+      this.humanMoveService.cancelPending(matchId);
+      if (this.activeMatches.removeMatch(matchId)) {
+        removedFromMemory++;
+      }
+    }
+
     this.logger.log(
-      `Cleaned up ${matchUpdateResult.modifiedCount} stale match(es), reset ${agentUpdateResult.modifiedCount} agent(s)`,
+      `Cleaned up ${matchUpdateResult.modifiedCount} stale match(es), reset ${agentUpdateResult.modifiedCount} agent(s), removed ${removedFromMemory} from memory`,
     );
   }
 }

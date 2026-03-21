@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import {
   MarrakechGameState,
   MarrakechMoveRequest,
@@ -294,8 +294,9 @@ export class MarrakechTurnControllerService {
     matchId: string, agentId: string, side: Side, moveNumber: number, state: MarrakechGameState,
   ): Promise<void> {
     try {
-      await this.moveModel.create({
-        matchId, agentId, side, moveNumber,
+      await this.moveModel.collection.insertOne({
+        matchId: new Types.ObjectId(matchId), agentId: new Types.ObjectId(agentId),
+        side, moveNumber,
         moveData: { row: state.assam.position.row, col: state.assam.position.col },
         boardStateAfter: this.serializeBoard(state.board),
         scoreAfter: { a: state.players[0]?.dirhams ?? 0, b: state.players[1]?.dirhams ?? 0 },
