@@ -158,15 +158,17 @@ export class PlayService {
     }
 
     const chain = 'solana';
-    const [alpha, nativeBalance] = await Promise.all([
-      this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress),
+    const [alpha, usdc, sol] = await Promise.all([
+      this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress, 'ALPHA'),
+      this.settlementRouter.getAgentTokenBalance(chain, user.walletAddress, 'USDC'),
       this.settlementRouter.getAgentNativeBalance(chain, user.walletAddress),
     ]);
 
     return {
       walletAddress: user.walletAddress,
       alpha,
-      nativeBalance,
+      usdc,
+      sol,
     };
   }
 
