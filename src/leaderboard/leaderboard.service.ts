@@ -15,16 +15,56 @@ export class LeaderboardService {
     const filter: Record<string, unknown> = { status: { $ne: 'disabled' }, 'stats.totalMatches': { $gt: 0 } };
     if (gameType) filter.gameTypes = gameType;
 
-    const agents = await this.agentModel.find(filter).sort({ eloRating: -1 }).limit(limit)
-      .select('name eloRating stats gameTypes userId createdAt xUsername claimStatus').lean();
+    // Fetch more agents than limit to score and re-rank
+    const agents = await this.agentModel.find(filter)
+      .sort({ eloRating: -1 })
+      .limit(Math.max(limit * 3, 100))
+      .select('name eloRating stats gameTypes userId createdAt xUsername claimStatus')
+      .lean();
 
-    const ranked = agents.map((agent: any, index: number) => ({
+    // Composite score: weighted combination of multiple factors
+    // - ELO (40%): skill rating
+    // - Win rate (25%): consistency
+    // - Total matches (15%): experience
+    // - Earnings (20%): profitability
+    const maxElo = Math.max(...agents.map((a: any) => a.eloRating || 1200), 1200);
+    const minElo = Math.min(...agents.map((a: any) => a.eloRating || 1200), 1200);
+    const eloRange = maxElo - minElo || 1;
+    const maxMatches = Math.max(...agents.map((a: any) => a.stats?.totalMatches || 0), 1);
+    const maxEarnings = Math.max(...agents.map((a: any) => a.stats?.totalEarnings || 0), 1);
+
+    const scored = agents.map((agent: any) => {
+      const elo = agent.eloRating || 1200;
+      const wins = agent.stats?.wins || 0;
+      const totalMatches = agent.stats?.totalMatches || 0;
+      const winRate = totalMatches > 0 ? wins / totalMatches : 0;
+      const earnings = agent.stats?.totalEarnings || 0;
+
+      // Normalize each factor to 0-1 range
+      const eloScore = (elo - minElo) / eloRange;
+      const winRateScore = winRate;
+      const matchesScore = totalMatches / maxMatches;
+      const earningsScore = earnings / maxEarnings;
+
+      const compositeScore =
+        eloScore * 0.40 +
+        winRateScore * 0.25 +
+        matchesScore * 0.15 +
+        earningsScore * 0.20;
+
+      return { agent, compositeScore };
+    });
+
+    scored.sort((a, b) => b.compositeScore - a.compositeScore);
+
+    const ranked = scored.slice(0, limit).map(({ agent, compositeScore }: any, index: number) => ({
       rank: index + 1, agentId: agent._id, name: agent.name, eloRating: agent.eloRating,
       stats: agent.stats, gameTypes: agent.gameTypes, userId: agent.userId,
       totalEarnings: agent.stats?.totalEarnings || 0,
       earningsAlpha: agent.stats?.earningsAlpha || 0,
       earningsUsdc: agent.stats?.earningsUsdc || 0,
       xUsername: agent.xUsername || null, claimStatus: agent.claimStatus || null,
+      score: Math.round(compositeScore * 1000) / 10,
     }));
 
     return { leaderboard: ranked };
