@@ -133,7 +133,7 @@ export class ResultHandlerService {
       winnerId: winnerId ?? null,
       reason,
       finalScore,
-      totalMoves: gameState.moveNumber,
+      totalMoves: matchDoc.moveCount || gameState.moveNumber,
       eloChange: eloChanges,
     };
 

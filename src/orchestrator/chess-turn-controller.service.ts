@@ -230,8 +230,11 @@ export class ChessTurnControllerService {
     thinkingTimeMs: number,
   ): Promise<void> {
     try {
-      await this.moveModel.create({
-        matchId, agentId, side, moveNumber,
+      const { Types } = require('mongoose');
+      await this.moveModel.collection.insertOne({
+        matchId: new Types.ObjectId(matchId),
+        agentId: new Types.ObjectId(agentId),
+        side, moveNumber,
         moveData: { row: 0, col: 0, uciMove },
         boardStateAfter, scoreAfter, thinkingTimeMs, timestamp: new Date(),
       });

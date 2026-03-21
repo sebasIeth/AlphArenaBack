@@ -294,8 +294,10 @@ export class MarrakechTurnControllerService {
     matchId: string, agentId: string, side: Side, moveNumber: number, state: MarrakechGameState,
   ): Promise<void> {
     try {
-      await this.moveModel.create({
-        matchId, agentId, side, moveNumber,
+      const { Types } = require('mongoose');
+      await this.moveModel.collection.insertOne({
+        matchId: new Types.ObjectId(matchId), agentId: new Types.ObjectId(agentId),
+        side, moveNumber,
         moveData: { row: state.assam.position.row, col: state.assam.position.col },
         boardStateAfter: this.serializeBoard(state.board),
         scoreAfter: { a: state.players[0]?.dirhams ?? 0, b: state.players[1]?.dirhams ?? 0 },

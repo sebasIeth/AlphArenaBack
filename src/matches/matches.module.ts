@@ -10,7 +10,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
     RealtimeModule,
     MongooseModule.forFeature([
       { name: Match.name, schema: MatchSchema },
-      { name: MoveDoc.name, schema: MoveSchema },
+      { name: MoveDoc.name, schema: MoveSchema, collection: 'moves' },
       { name: Agent.name, schema: AgentSchema },
     ]),
   ],

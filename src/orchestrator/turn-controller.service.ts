@@ -193,8 +193,10 @@ export class TurnControllerService {
     thinkingTimeMs: number,
   ): Promise<void> {
     try {
-      await this.moveModel.create({
-        matchId, agentId, side, moveNumber, moveData,
+      const { Types } = require('mongoose');
+      await this.moveModel.collection.insertOne({
+        matchId: new Types.ObjectId(matchId), agentId: new Types.ObjectId(agentId),
+        side, moveNumber, moveData,
         boardStateAfter, scoreAfter, thinkingTimeMs, timestamp: new Date(),
       });
     } catch (error: unknown) {

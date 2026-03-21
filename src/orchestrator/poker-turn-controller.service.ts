@@ -42,12 +42,19 @@ export class PokerTurnControllerService {
 
   /** Track consecutive errors per match to abort runaway loops */
   private consecutiveErrors = new Map<string, number>();
+  /** Track total action count across all hands per match */
+  private totalActionCounts = new Map<string, number>();
 
   async executeHand(
     matchState: ActiveMatchState,
     pokerState: PokerGameState,
   ): Promise<PokerHandResult> {
     const { matchId } = matchState;
+
+    // Initialize total action count if not set
+    if (!this.totalActionCounts.has(matchId)) {
+      this.totalActionCounts.set(matchId, 0);
+    }
 
     // 1. Deal new hand
     let state = dealNewHand(pokerState);
@@ -203,8 +210,12 @@ export class PokerTurnControllerService {
 
         state = applyAction(state, pokerAction);
 
+        // Increment total action counter
+        const totalActions = (this.totalActionCounts.get(matchId) || 0) + 1;
+        this.totalActionCounts.set(matchId, totalActions);
+
         // Emit match:move event (use pre-action hand/street so moves stay in the correct hand)
-        const moveNumber = state.actionHistory.length;
+        const moveNumber = totalActions;
         this.eventBus.emit('match:move', {
           matchId,
           side: currentSide,
@@ -264,14 +275,19 @@ export class PokerTurnControllerService {
       }
     }
 
-    // 3. Resolve hand
+    // 3. Resolve hand — capture pot before it resets to 0
+    const potBeforeResolve = state.pot;
+    let handWinner: string | null = null;
     if (state.players.a.hasFolded || state.players.b.hasFolded) {
+      const folderSide = state.players.a.hasFolded ? 'a' : 'b';
+      handWinner = folderSide === 'a' ? 'b' : 'a';
       state = resolveFold(state);
-      this.logger.log(`Hand #${state.handNumber}: fold — winner=${state.winner} (match=${matchId})`);
+      this.logger.log(`Hand #${state.handNumber}: fold — handWinner=${handWinner} (match=${matchId})`);
     } else {
       state = resolveShowdown(state);
+      handWinner = state.showdownResult?.winnerSide ?? null;
       this.logger.log(
-        `Hand #${state.handNumber}: showdown — winner=${state.showdownResult?.winnerSide}, ` +
+        `Hand #${state.handNumber}: showdown — winner=${handWinner}, ` +
         `hand=${state.showdownResult?.winnerHand?.description} (match=${matchId})`,
       );
     }
@@ -287,8 +303,11 @@ export class PokerTurnControllerService {
       },
       communityCards: state.communityCards,
       result: state.showdownResult ? 'showdown' : 'fold',
-      winner: state.winner,
-      pot: state.pot,
+      winner: handWinner,
+      pot: potBeforeResolve,
+      actions: state.actionHistory.map(a => ({
+        type: a.type, amount: a.amount, playerSide: a.playerSide, street: a.street,
+      })),
     };
     await this.matchModel.updateOne(
       { _id: matchId },
@@ -315,6 +334,10 @@ export class PokerTurnControllerService {
     });
 
     const matchOver = isMatchOver(state);
+    if (matchOver) {
+      this.totalActionCounts.delete(matchId);
+      this.consecutiveErrors.delete(matchId);
+    }
     return {
       pokerState: state,
       matchOver,
@@ -390,8 +413,12 @@ export class PokerTurnControllerService {
     street?: string,
   ): Promise<void> {
     try {
-      await this.moveModel.create({
-        matchId, agentId, side, moveNumber,
+      // Use direct collection insert to bypass Mongoose schema validation
+      // (the MoveDoc schema was designed for reversi/chess board games)
+      await this.moveModel.collection.insertOne({
+        matchId: new (require('mongoose').Types.ObjectId)(matchId),
+        agentId: new (require('mongoose').Types.ObjectId)(agentId),
+        side, moveNumber,
         moveData: {
           row: 0, col: 0,
           pokerAction: action.action,
@@ -419,12 +446,13 @@ export class PokerTurnControllerService {
   private async persistPokerState(matchId: string, state: PokerGameState): Promise<void> {
     // Strip deck from saved state (don't leak remaining cards)
     const stateToSave = { ...state, deck: [] };
+    const totalMoveCount = this.totalActionCounts.get(matchId) || state.actionHistory.length;
     await this.matchModel.updateOne(
       { _id: matchId },
       {
         pokerState: stateToSave,
         currentTurn: state.currentPlayerSide,
-        moveCount: state.actionHistory.length,
+        moveCount: totalMoveCount,
         scores: { a: state.players.a.stack, b: state.players.b.stack },
       },
     ).catch((err: unknown) => {
