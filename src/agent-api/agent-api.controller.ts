@@ -69,7 +69,8 @@ export class AgentApiController {
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet');
 
     const { decrypt } = require('../common/crypto.util');
-    const agentDoc = agent as any;
+    const agentDoc = await this.agentModel.findById((agent as any)._id).select('+walletPrivateKey');
+    if (!agentDoc?.walletPrivateKey) throw new BadRequestException('Agent wallet key not found');
     const privKey = decrypt(agentDoc.walletPrivateKey);
     const token = body.token || 'USDC';
     const chain = agentDoc.chain || 'solana';
