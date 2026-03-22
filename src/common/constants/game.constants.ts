@@ -1,6 +1,6 @@
 export const MATCH_DURATION_MS = 1_200_000;
-export const TURN_TIMEOUT_MS = 20_000;
-export const PULL_AGENT_TURN_TIMEOUT_MS = 120_000;
+export const TURN_TIMEOUT_MS = 60_000;
+export const PULL_AGENT_TURN_TIMEOUT_MS = 60_000;
 export const MAX_TIMEOUTS = 2;
 const isProd = process.env.NODE_ENV === 'production';
 export const MIN_STAKE = 0;
