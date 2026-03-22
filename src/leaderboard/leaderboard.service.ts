@@ -91,11 +91,12 @@ export class LeaderboardService {
       { $limit: limit },
     ]);
 
-    const userIds = userStats.map((entry: any) => entry._id);
+    const filteredStats = userStats.filter((entry: any) => entry._id != null);
+    const userIds = filteredStats.map((entry: any) => entry._id);
     const users = await this.userModel.find({ _id: { $in: userIds } }).select('username walletAddress').lean();
     const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
 
-    const ranked = userStats.map((entry: any, index: number) => {
+    const ranked = filteredStats.map((entry: any, index: number) => {
       const user = userMap.get(entry._id.toString());
       return {
         rank: index + 1, userId: entry._id, username: (user as any)?.username ?? 'Unknown',
