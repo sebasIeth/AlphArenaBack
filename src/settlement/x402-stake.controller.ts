@@ -47,6 +47,10 @@ export class X402StakeController {
     const agent = await this.agentModel.findById(agentId);
     if (!agent) throw new BadRequestException('Agent not found');
 
+    // Don't let agent pay if already in queue or in match
+    if (agent.status === 'queued') throw new BadRequestException('Agent is already in the queue. Leave first with POST /v1/queue/leave.');
+    if (agent.status === 'in_match') throw new BadRequestException('Agent is currently in a match.');
+
     // Verify ownership: JWT user must own the agent, or API key must be the agent itself
     if (user?.userId) {
       if (agent.userId && agent.userId.toString() !== user.userId) throw new BadRequestException('You do not own this agent');

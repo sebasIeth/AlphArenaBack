@@ -118,6 +118,14 @@ export class AgentApiService {
       );
     }
 
+    // Also check in-memory queue (status may have been reset but queue entry persists)
+    const existingEntry = await this.matchmakingService.getQueueStatus(agentId);
+    if (existingEntry) {
+      throw new BadRequestException(
+        `Agent is already in the queue for ${existingEntry.gameType}. Call POST /v1/queue/leave first, or wait for the match.`,
+      );
+    }
+
     if (!agent.gameTypes.includes(dto.gameType)) {
       throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
     }
