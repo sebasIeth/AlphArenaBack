@@ -53,6 +53,36 @@ export class AgentApiController {
     return { message: 'Agent linked to user', agentId: agentDoc._id.toString(), userId: body.userId };
   }
 
+  /**
+   * Transfer tokens from agent wallet to any address.
+   * Useful for x402 USDC payments — agent transfers USDC to platform, gets back the txSignature.
+   */
+  @Post('transfer')
+  @UseGuards(ApiKeyAuthGuard)
+  @HttpCode(200)
+  async transfer(
+    @CurrentAgent() agent: Agent,
+    @Body() body: { to: string; amount: number; token?: string },
+  ) {
+    if (!body.to || !body.amount) throw new BadRequestException('to and amount are required');
+    if (body.amount <= 0) throw new BadRequestException('amount must be > 0');
+    if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet');
+
+    const { decrypt } = require('../common/crypto.util');
+    const agentDoc = agent as any;
+    const privKey = decrypt(agentDoc.walletPrivateKey);
+    const token = body.token || 'USDC';
+    const chain = agentDoc.chain || 'solana';
+
+    const decimals = this.settlementRouter.getTokenDecimals(chain, token);
+    const amountAtomic = BigInt(Math.round(body.amount * 10 ** decimals));
+
+    const txHash = await this.settlementRouter.transferTokenFromAgent(chain, privKey, body.to, amountAtomic, token);
+    if (!txHash) throw new BadRequestException('Transfer failed');
+
+    return { txHash, from: agent.walletAddress, to: body.to, amount: body.amount, token };
+  }
+
   @Post('queue/join')
   @UseGuards(ApiKeyAuthGuard)
   @HttpCode(200)
