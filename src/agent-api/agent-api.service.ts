@@ -184,6 +184,7 @@ export class AgentApiService {
         dto.gameType,
         'pull',
         dto.token,
+        agent.gameTypes,
       );
 
       return {

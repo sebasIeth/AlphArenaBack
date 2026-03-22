@@ -80,7 +80,7 @@ export class PlayService {
     await agent.save();
 
     try {
-      await this.matchmakingService.joinQueue(agent._id.toString(), userId, agent.eloRating, stakeAmount, gameType, 'human', token);
+      await this.matchmakingService.joinQueue(agent._id.toString(), userId, agent.eloRating, stakeAmount, gameType, 'human', token, agent.gameTypes);
       return {
         message: 'Successfully joined the matchmaking queue',
         agentId: agent._id.toString(),

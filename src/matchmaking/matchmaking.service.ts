@@ -116,8 +116,8 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     this.onPairedCallback = cb;
   }
 
-  async joinQueue(agentId: string, userId: string, eloRating: number, stakeAmount: number, gameType: string, agentType?: string, token?: string): Promise<void> {
-    const entry: QueueEntryData = { agentId, userId, eloRating, stakeAmount, gameType, status: 'waiting', joinedAt: new Date(), agentType, token };
+  async joinQueue(agentId: string, userId: string, eloRating: number, stakeAmount: number, gameType: string, agentType?: string, token?: string, gameTypes?: string[]): Promise<void> {
+    const entry: QueueEntryData = { agentId, userId, eloRating, stakeAmount, gameType, gameTypes, status: 'waiting', joinedAt: new Date(), agentType, token };
     await this.queue.add(entry);
     this.logger.log(`Agent ${agentId} joined matchmaking queue`);
   }
@@ -161,148 +161,97 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     this.processing = true;
 
     try {
-      const gameTypes = this.queue.getGameTypes();
+      const allWaiting = this.queue.getAll().filter(e => e.status === 'waiting');
+      if (allWaiting.length < 2) { this.processing = false; return; }
 
-      // Cancel countdowns for game types that no longer have enough agents
-      for (const [gameType, _countdown] of this.countdowns) {
-        const waiting = this.queue.getWaiting(gameType);
-        if (waiting.length < 2) {
-          this.logger.log(`Countdown cancelled for ${gameType} — not enough agents`);
-          this.countdowns.delete(gameType);
+      // 1. Try poker grouping first (3+ players that support poker)
+      if (this.onMultiMatchCallback) {
+        const pokerGroup = findPokerGroup(allWaiting);
+        if (pokerGroup && pokerGroup.length >= 3) {
+          const countdown = this.countdowns.get('poker');
+          const now = Date.now();
+          if (!countdown) {
+            this.countdowns.set('poker', { startedAt: now });
+            this.logger.log(`Poker countdown started with ${pokerGroup.length} agents`);
+            this.emitCountdown('poker', MATCHMAKING_COUNTDOWN_MS, allWaiting);
+          } else {
+            const remaining = MATCHMAKING_COUNTDOWN_MS - (now - countdown.startedAt);
+            if (remaining > 0) {
+              this.emitCountdown('poker', remaining, allWaiting);
+            } else {
+              this.countdowns.delete('poker');
+              this.logger.log(`Poker countdown expired, creating match with ${pokerGroup.length} players`);
+              try {
+                for (const entry of pokerGroup) await this.queue.setStatus(entry.agentId, 'pairing');
+                const stakeAmount = Math.min(...pokerGroup.map(e => e.stakeAmount));
+                const token = pokerGroup[0].token || 'ALPHA';
+                const matchId = await this.onMultiMatchCallback(pokerGroup.map(e => e.agentId), stakeAmount, 'poker', token);
+                if (token === 'USDC') {
+                  const escrowTxs: { agentId: string; txSignature: string; amount: number }[] = [];
+                  for (const entry of pokerGroup) {
+                    const payment = this.x402PaymentStore.getPayment(entry.agentId);
+                    if (payment) {
+                      escrowTxs.push({ agentId: entry.agentId, txSignature: payment.txSignature, amount: payment.amount });
+                      this.x402PaymentStore.consumePayment(entry.agentId);
+                    }
+                  }
+                  if (escrowTxs.length > 0) {
+                    await this.agentModel.db.collection('matches').updateOne(
+                      { _id: new (require('mongoose').Types.ObjectId)(matchId) },
+                      { $set: { 'txHashes.escrow': escrowTxs } },
+                    );
+                  }
+                }
+                this.eventBus.emit('matchmaking:matched', { matchId, gameType: 'poker', agents: pokerGroup.map(e => e.agentId) });
+                for (const entry of pokerGroup) await this.queue.remove(entry.agentId);
+              } catch (err) {
+                this.logger.error(`Failed to create poker match: ${err}`);
+                for (const entry of pokerGroup) {
+                  try { await this.queue.setStatus(entry.agentId, 'waiting'); } catch {}
+                }
+              }
+            }
+          }
         }
       }
 
-      for (const gameType of gameTypes) {
-        const waiting = this.queue.getWaiting(gameType);
-        if (waiting.length < 2) continue;
+      // 2. Universal pairing: find any 2 agents with common game types
+      const remaining = this.queue.getAll().filter(e => e.status === 'waiting');
+      const pairs = findPairs(remaining);
+      if (pairs.length === 0) { this.processing = false; return; }
 
-        // Poker: use multi-agent grouping (2-9 players)
-        if (gameType === 'poker' && this.onMultiMatchCallback) {
-          const group = findPokerGroup(waiting);
-          if (!group || group.length < 2) continue;
-
-          // Poker always uses countdown to wait for more players (up to 9)
-          {
-            const countdown = this.countdowns.get(gameType);
-            const now = Date.now();
-            if (!countdown) {
-              this.countdowns.set(gameType, { startedAt: now });
-              this.logger.log(`Poker countdown started with ${waiting.length} agents`);
-              this.emitCountdown(gameType, MATCHMAKING_COUNTDOWN_MS, waiting);
-              continue;
-            }
-            const remaining = MATCHMAKING_COUNTDOWN_MS - (now - countdown.startedAt);
-            if (remaining > 0) { this.emitCountdown(gameType, remaining, waiting); continue; }
-            this.countdowns.delete(gameType);
-            this.logger.log(`Poker countdown expired, creating match with ${group.length} players`);
-          }
-
-          try {
-            for (const entry of group) await this.queue.setStatus(entry.agentId, 'pairing');
-            const stakeAmount = Math.min(...group.map(e => e.stakeAmount));
-            const token = group[0].token || 'ALPHA';
-            const matchId = await this.onMultiMatchCallback(group.map(e => e.agentId), stakeAmount, gameType, token);
-            // Save x402 escrow TXs to match
-            if (token === 'USDC') {
-              const escrowTxs: { agentId: string; txSignature: string; amount: number }[] = [];
-              for (const entry of group) {
-                const payment = this.x402PaymentStore.getPayment(entry.agentId);
-                if (payment) {
-                  escrowTxs.push({ agentId: entry.agentId, txSignature: payment.txSignature, amount: payment.amount });
-                  this.x402PaymentStore.consumePayment(entry.agentId);
-                }
-              }
-              if (escrowTxs.length > 0) {
-                await this.agentModel.db.collection('matches').updateOne(
-                  { _id: new (require('mongoose').Types.ObjectId)(matchId) },
-                  { $set: { 'txHashes.escrow': escrowTxs } },
-                );
+      // Instant pair for 2-agent matches (chess, or poker with only 2)
+      for (const [entryA, entryB, chosenGame] of pairs) {
+        try {
+          await this.queue.setStatus(entryA.agentId, 'pairing');
+          await this.queue.setStatus(entryB.agentId, 'pairing');
+          const stakeAmount = Math.min(entryA.stakeAmount, entryB.stakeAmount);
+          const token = entryA.token || entryB.token || 'ALPHA';
+          this.logger.log(`Pairing ${entryA.agentId} vs ${entryB.agentId} for ${chosenGame}`);
+          const matchId = await this.onPairedCallback(entryA.agentId, entryB.agentId, stakeAmount, chosenGame, token);
+          if (token === 'USDC') {
+            const escrowTxs: { agentId: string; txSignature: string; amount: number }[] = [];
+            for (const entry of [entryA, entryB]) {
+              const payment = this.x402PaymentStore.getPayment(entry.agentId);
+              if (payment) {
+                escrowTxs.push({ agentId: entry.agentId, txSignature: payment.txSignature, amount: payment.amount });
+                this.x402PaymentStore.consumePayment(entry.agentId);
               }
             }
-            this.eventBus.emit('matchmaking:matched', { matchId, gameType, agents: group.map(e => e.agentId) });
-            for (const entry of group) await this.queue.remove(entry.agentId);
-          } catch (err) {
-            this.logger.error(`Failed to create poker match: ${err}`);
-            for (const entry of group) {
-              try { await this.queue.setStatus(entry.agentId, 'waiting'); } catch {}
+            if (escrowTxs.length > 0) {
+              await this.agentModel.db.collection('matches').updateOne(
+                { _id: new (require('mongoose').Types.ObjectId)(matchId) },
+                { $set: { 'txHashes.escrow': escrowTxs } },
+              );
             }
           }
-          continue;
-        }
-
-        // Chess/other: pair 2 agents
-        const pairs = findPairs(waiting);
-        if (pairs.length === 0) continue;
-
-        if (waiting.length === 2 && pairs.length === 1) {
-          this.countdowns.delete(gameType);
-          this.logger.log(`Instant pairing for ${gameType} — exactly 2 agents`);
-        } else {
-          const countdown = this.countdowns.get(gameType);
-          const now = Date.now();
-
-          if (!countdown) {
-            // Start a new countdown
-            this.countdowns.set(gameType, { startedAt: now });
-            this.logger.log(`Countdown started for ${gameType} with ${waiting.length} agents`);
-            this.emitCountdown(gameType, MATCHMAKING_COUNTDOWN_MS, waiting);
-            continue;
-          }
-
-          const elapsed = now - countdown.startedAt;
-          const remainingMs = MATCHMAKING_COUNTDOWN_MS - elapsed;
-
-          if (remainingMs > 0) {
-            // Countdown still active — emit tick
-            this.emitCountdown(gameType, remainingMs, waiting);
-            continue;
-          }
-
-          // Countdown expired — run pairing on the full pool
-          this.countdowns.delete(gameType);
-          this.logger.log(`Countdown expired for ${gameType}, pairing ${pairs.length} pair(s)`);
-        }
-
-        for (const [entryA, entryB] of pairs) {
-          try {
-            await this.queue.setStatus(entryA.agentId, 'pairing');
-            await this.queue.setStatus(entryB.agentId, 'pairing');
-            const stakeAmount = Math.min(entryA.stakeAmount, entryB.stakeAmount);
-            const token = entryA.token || entryB.token || 'ALPHA';
-            const matchId = await this.onPairedCallback(entryA.agentId, entryB.agentId, stakeAmount, gameType, token);
-            // Save x402 escrow TXs
-            if (token === 'USDC') {
-              const escrowTxs: { agentId: string; txSignature: string; amount: number }[] = [];
-              for (const entry of [entryA, entryB]) {
-                const payment = this.x402PaymentStore.getPayment(entry.agentId);
-                if (payment) {
-                  escrowTxs.push({ agentId: entry.agentId, txSignature: payment.txSignature, amount: payment.amount });
-                  this.x402PaymentStore.consumePayment(entry.agentId);
-                }
-              }
-              if (escrowTxs.length > 0) {
-                await this.agentModel.db.collection('matches').updateOne(
-                  { _id: new (require('mongoose').Types.ObjectId)(matchId) },
-                  { $set: { 'txHashes.escrow': escrowTxs } },
-                );
-              }
-            }
-            this.eventBus.emit('matchmaking:matched', {
-              matchId,
-              gameType,
-              agents: [entryA.agentId, entryB.agentId],
-            });
-            await this.queue.remove(entryA.agentId);
-            await this.queue.remove(entryB.agentId);
-          } catch (err) {
-            this.logger.error(`Failed to create match for pair: ${err}`);
-            try {
-              await this.queue.setStatus(entryA.agentId, 'waiting');
-              await this.queue.setStatus(entryB.agentId, 'waiting');
-            } catch (resetErr) {
-              this.logger.error(`Failed to reset queue entry status: ${resetErr}`);
-            }
-          }
+          this.eventBus.emit('matchmaking:matched', { matchId, gameType: chosenGame, agents: [entryA.agentId, entryB.agentId] });
+          await this.queue.remove(entryA.agentId);
+          await this.queue.remove(entryB.agentId);
+        } catch (err) {
+          this.logger.error(`Failed to create match: ${err}`);
+          try { await this.queue.setStatus(entryA.agentId, 'waiting'); } catch {}
+          try { await this.queue.setStatus(entryB.agentId, 'waiting'); } catch {}
         }
       }
     } catch (err) {

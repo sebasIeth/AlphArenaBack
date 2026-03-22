@@ -12,13 +12,26 @@ function stakesCompatible(stakeA: number, stakeB: number): boolean {
   return smaller >= larger * (1 - STAKE_TOLERANCE);
 }
 
+/** Find common game types between two entries */
+function getCommonGameTypes(a: QueueEntryData, b: QueueEntryData): string[] {
+  const aTypes = a.gameTypes || [a.gameType];
+  const bTypes = b.gameTypes || [b.gameType];
+  return aTypes.filter(t => bTypes.includes(t));
+}
+
+/** Pick a random game type from common ones */
+function pickRandomGameType(common: string[]): string {
+  return common[Math.floor(Math.random() * common.length)];
+}
+
 /**
- * For chess/marrakech: pair 2 agents.
+ * Universal pairing: match any 2 agents with compatible stake/elo and at least 1 common game type.
+ * Returns pairs with the chosen gameType.
  */
-export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryData, QueueEntryData]> {
+export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryData, QueueEntryData, string]> {
   const sorted = [...waitingEntries].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
   const paired = new Set<string>();
-  const pairs: Array<[QueueEntryData, QueueEntryData]> = [];
+  const pairs: Array<[QueueEntryData, QueueEntryData, string]> = [];
 
   for (let i = 0; i < sorted.length; i++) {
     const entryA = sorted[i];
@@ -27,7 +40,11 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
     for (let j = i + 1; j < sorted.length; j++) {
       const entryB = sorted[j];
       if (paired.has(entryB.agentId)) continue;
-      if (entryA.gameType !== entryB.gameType) continue;
+
+      // Must have at least 1 common game type
+      const common = getCommonGameTypes(entryA, entryB);
+      if (common.length === 0) continue;
+
       if (process.env.NODE_ENV !== 'development' && entryA.userId === entryB.userId) {
         const hasHumanOrPull = entryA.agentType === 'human' || entryB.agentType === 'human'
           || entryA.agentType === 'pull' || entryB.agentType === 'pull';
@@ -36,7 +53,11 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       if (Math.abs(entryA.eloRating - entryB.eloRating) > ELO_MATCH_RANGE) continue;
       if (!stakesCompatible(entryA.stakeAmount, entryB.stakeAmount)) continue;
 
-      pairs.push([entryA, entryB]);
+      // Same token required
+      if ((entryA.token || 'ALPHA') !== (entryB.token || 'ALPHA')) continue;
+
+      const chosenGame = pickRandomGameType(common);
+      pairs.push([entryA, entryB, chosenGame]);
       paired.add(entryA.agentId);
       paired.add(entryB.agentId);
       break;
@@ -47,11 +68,18 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
 
 /**
  * For poker: group 2-9 compatible agents into a single table.
+ * Only groups agents that share "poker" in their game types.
  */
 export function findPokerGroup(waitingEntries: QueueEntryData[]): QueueEntryData[] | null {
-  if (waitingEntries.length < POKER_MIN_PLAYERS) return null;
+  // Filter to agents that support poker
+  const pokerEntries = waitingEntries.filter(e => {
+    const types = e.gameTypes || [e.gameType];
+    return types.includes('poker');
+  });
 
-  const sorted = [...waitingEntries].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+  if (pokerEntries.length < POKER_MIN_PLAYERS) return null;
+
+  const sorted = [...pokerEntries].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
   const group: QueueEntryData[] = [sorted[0]];
 
   for (let i = 1; i < sorted.length && group.length < POKER_MAX_PLAYERS; i++) {

@@ -11,6 +11,7 @@ export interface QueueEntryData {
   eloRating: number;
   stakeAmount: number;
   gameType: string;
+  gameTypes?: string[];
   status: QueueEntryStatus;
   joinedAt: Date;
   agentType?: string;

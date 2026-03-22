@@ -97,7 +97,7 @@ export class MatchmakingController {
     await agent.save();
 
     try {
-      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type, matchToken);
+      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type, matchToken, agent.gameTypes);
       return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: dto.gameType, stakeAmount: dto.stakeAmount, token: matchToken };
     } catch (err) {
       agent.status = 'idle';
