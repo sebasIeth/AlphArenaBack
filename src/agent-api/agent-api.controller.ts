@@ -7,7 +7,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { ApiKeyAuthGuard } from '../common/guards/api-key-auth.guard';
 import { CurrentAgent } from '../common/decorators/current-agent.decorator';
 import { Agent } from '../database/schemas';
-import { SettlementService } from '../settlement/settlement.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { AgentApiService } from './agent-api.service';
 import { HeartbeatService } from './heartbeat.service';
 import { RegisterAgentDto } from './dto/register.dto';
@@ -20,7 +20,7 @@ export class AgentApiController {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     private readonly agentApiService: AgentApiService,
     private readonly heartbeatService: HeartbeatService,
-    private readonly settlement: SettlementService,
+    private readonly settlementRouter: SettlementRouterService,
   ) {}
 
   @Post('register')
@@ -102,15 +102,17 @@ export class AgentApiController {
       throw new BadRequestException('Agent does not have a wallet');
     }
 
-    const [usdc, eth] = await Promise.all([
-      this.settlement.getAgentUsdcBalance(agent.walletAddress),
-      this.settlement.getAgentEthBalance(agent.walletAddress),
+    const chain = (agent as any).chain || 'solana';
+    const [alpha, usdc, sol] = await Promise.all([
+      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'ALPHA').catch(() => '0'),
+      this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, 'USDC').catch(() => '0'),
+      this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress).catch(() => '0'),
     ]);
 
     return {
       agentId: (agent as any)._id.toString(),
       walletAddress: agent.walletAddress,
-      balances: { usdc, eth },
+      balances: { alpha, usdc, sol },
       depositAddress: agent.walletAddress,
     };
   }
