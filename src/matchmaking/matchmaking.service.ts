@@ -29,6 +29,17 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     await this.queue.loadFromDatabase();
 
+    // Sync: reset agents stuck in 'queued' that aren't actually in the queue
+    const queuedAgentIds = new Set(this.queue.getAll().map(e => e.agentId));
+    const stuckAgents = await this.agentModel.find({ status: 'queued' });
+    for (const agent of stuckAgents) {
+      if (!queuedAgentIds.has(agent._id.toString())) {
+        agent.status = 'idle';
+        await agent.save();
+        this.logger.log(`Recovered stuck agent ${agent.name} (${agent._id}) from queued → idle`);
+      }
+    }
+
     this.setOnPairedCallback(async (agentAId, agentBId, stakeAmount, gameType, token) => {
       const [agentA, agentB] = await Promise.all([
         this.agentModel.findById(agentAId),
