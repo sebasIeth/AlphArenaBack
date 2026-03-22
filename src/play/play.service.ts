@@ -49,10 +49,10 @@ export class PlayService {
       throw new BadRequestException('Wallet not found. Please contact support.');
     }
 
-    // Verify wallet balance (skip for zero-stake)
+    // Verify wallet balance and escrow stake
     const matchToken = token || 'ALPHA';
+    const chain = agent.chain || 'solana';
     if (stakeAmount > 0) {
-      const chain = agent.chain || 'solana';
       const tokenBalance = await this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, matchToken).catch(() => '0');
 
       if (parseFloat(tokenBalance) < stakeAmount) {
@@ -60,6 +60,20 @@ export class PlayService {
           `Insufficient ${matchToken} balance. You have ${tokenBalance} but need ${stakeAmount}. Deposit to ${agent.walletAddress}`,
         );
       }
+
+      // Custodial escrow: transfer stake from user wallet to platform
+      const user = await this.userModel.findById(userId).select('+walletPrivateKey');
+      if (!user?.walletPrivateKey) throw new BadRequestException('Wallet not configured');
+      const { decrypt } = require('../common/crypto.util');
+      const privKey = decrypt(user.walletPrivateKey);
+      const decimals = this.settlementRouter.getTokenDecimals(chain, matchToken);
+      const amountAtomic = BigInt(Math.round(stakeAmount * 10 ** decimals));
+      const platformWallet = this.settlementRouter.getPlatformWalletAddress(chain);
+      if (!platformWallet) throw new BadRequestException('Settlement not configured');
+
+      const escrowTx = await this.settlementRouter.transferTokenFromAgent(chain, privKey, platformWallet, amountAtomic, matchToken);
+      if (!escrowTx) throw new BadRequestException(`${matchToken} escrow transfer failed`);
+      this.logger.log(`Play escrow: user=${userId}, amount=${stakeAmount} ${matchToken}, tx=${escrowTx}`);
     }
 
     agent.status = 'queued';
