@@ -51,15 +51,16 @@ export class WorkerService {
     }
   }
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
-  async handleScheduledMatches(): Promise<void> {
-    try {
-      await this.scheduledMatch.run();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Scheduled match job failed: ${message}`);
-    }
-  }
+  // ScheduledMatchJob disabled — causes pending match zombies on restart
+  // @Cron(CronExpression.EVERY_30_SECONDS)
+  // async handleScheduledMatches(): Promise<void> {
+  //   try {
+  //     await this.scheduledMatch.run();
+  //   } catch (error: unknown) {
+  //     const message = error instanceof Error ? error.message : String(error);
+  //     this.logger.error(`Scheduled match job failed: ${message}`);
+  //   }
+  // }
 
   // RandomScheduledMatchJob disabled — causes pending match zombies on restart
   // @Cron(CronExpression.EVERY_MINUTE)
