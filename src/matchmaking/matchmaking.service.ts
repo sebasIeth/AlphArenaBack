@@ -8,6 +8,7 @@ import { MATCHMAKING_INTERVAL_MS, MATCHMAKING_COUNTDOWN_MS } from '../common/con
 import { OrchestratorService } from '../orchestrator/orchestrator.service';
 import { EventBusService } from '../orchestrator/event-bus.service';
 import { X402PaymentStore } from '../settlement/x402-payment-store.service';
+import { ActiveMatchesService } from '../orchestrator/active-matches.service';
 
 @Injectable()
 export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
@@ -24,6 +25,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     private readonly orchestrator: OrchestratorService,
     private readonly eventBus: EventBusService,
     private readonly x402PaymentStore: X402PaymentStore,
+    private readonly activeMatches: ActiveMatchesService,
   ) {}
 
   async onModuleInit() {
@@ -117,6 +119,14 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   }
 
   async joinQueue(agentId: string, userId: string, eloRating: number, stakeAmount: number, gameType: string, agentType?: string, token?: string, gameTypes?: string[]): Promise<void> {
+    // Prevent joining if already in an active match
+    for (const [, state] of this.activeMatches.entries()) {
+      for (const side of Object.keys(state.agents)) {
+        if (state.agents[side].agentId === agentId) {
+          throw new Error(`Agent ${agentId} is already in an active match`);
+        }
+      }
+    }
     const entry: QueueEntryData = { agentId, userId, eloRating, stakeAmount, gameType, gameTypes, status: 'waiting', joinedAt: new Date(), agentType, token };
     await this.queue.add(entry);
     this.logger.log(`Agent ${agentId} joined matchmaking queue`);
