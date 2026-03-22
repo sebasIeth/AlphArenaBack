@@ -26,9 +26,9 @@ export class MatchmakingQueue {
   constructor(@InjectModel('QueueEntry') private readonly queueEntryModel: Model<QueueEntryDoc>) {}
 
   async loadFromDatabase(): Promise<void> {
-    // Clean stale entries older than 10 minutes on startup
+    // Clean stale entries older than 10 minutes and entries without gameTypes on startup
     const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
-    const staleResult = await this.queueEntryModel.deleteMany({ joinedAt: { $lt: staleThreshold } });
+    const staleResult = await this.queueEntryModel.deleteMany({ $or: [{ joinedAt: { $lt: staleThreshold } }, { gameTypes: null }] });
     if (staleResult.deletedCount > 0) {
       this.logger.log(`Cleaned ${staleResult.deletedCount} stale queue entries on startup`);
     }
