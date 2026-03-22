@@ -61,14 +61,15 @@ export class WorkerService {
     }
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
-  async handleRandomScheduledMatches(): Promise<void> {
-    try {
-      await this.randomScheduledMatch.run();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Random scheduled match job failed: ${message}`);
-    }
-  }
+  // RandomScheduledMatchJob disabled — causes pending match zombies on restart
+  // @Cron(CronExpression.EVERY_MINUTE)
+  // async handleRandomScheduledMatches(): Promise<void> {
+  //   try {
+  //     await this.randomScheduledMatch.run();
+  //   } catch (error: unknown) {
+  //     const message = error instanceof Error ? error.message : String(error);
+  //     this.logger.error(`Random scheduled match job failed: ${message}`);
+  //   }
+  // }
 
 }
