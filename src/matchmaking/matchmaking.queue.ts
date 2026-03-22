@@ -25,15 +25,23 @@ export class MatchmakingQueue {
   constructor(@InjectModel('QueueEntry') private readonly queueEntryModel: Model<QueueEntryDoc>) {}
 
   async loadFromDatabase(): Promise<void> {
+    // Clean stale entries older than 10 minutes on startup
+    const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+    const staleResult = await this.queueEntryModel.deleteMany({ joinedAt: { $lt: staleThreshold } });
+    if (staleResult.deletedCount > 0) {
+      this.logger.log(`Cleaned ${staleResult.deletedCount} stale queue entries on startup`);
+    }
+
     const docs = await this.queueEntryModel.find({ status: { $in: ['waiting', 'pairing'] } }).lean();
     this.entries = docs.map((doc: any) => ({
       agentId: doc.agentId.toString(),
-      userId: doc.userId.toString(),
+      userId: doc.userId?.toString() ?? doc.agentId.toString(),
       eloRating: doc.eloRating,
       stakeAmount: doc.stakeAmount,
       gameType: doc.gameType,
       status: doc.status as QueueEntryStatus,
       joinedAt: doc.joinedAt,
+      token: doc.token,
     }));
     this.logger.log(`Loaded ${this.entries.length} queue entries from database`);
   }
