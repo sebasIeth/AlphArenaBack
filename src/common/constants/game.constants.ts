@@ -23,7 +23,15 @@ export const GAME_TYPES = ['marrakech', 'chess', 'poker'] as const;
 
 export const POKER_SMALL_BLIND = 20;
 export const POKER_BIG_BLIND = 40;
-export const POKER_MAX_HANDS = 15;
+
+/** Max hands scales with player count to keep matches under ~10 min */
+export function getPokerMaxHands(playerCount: number): number {
+  if (playerCount <= 2) return 6;     // 1v1: ~3-4 min
+  if (playerCount <= 4) return 5;     // 3-4 players: ~6-8 min
+  if (playerCount <= 6) return 4;     // 5-6 players: ~8-10 min
+  return 3;                           // 7-9 players: ~8-10 min
+}
+export const POKER_MAX_HANDS = 6; // default for backward compat
 
 export const CHESS_PIECE = {
   EMPTY: 0,

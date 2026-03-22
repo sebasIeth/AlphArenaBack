@@ -8,7 +8,7 @@ import {
 } from '../common/types';
 import {
   MAX_TIMEOUTS, MATCH_DURATION_MS, TURN_TIMEOUT_MS,
-  POKER_SMALL_BLIND, POKER_BIG_BLIND, POKER_MAX_HANDS,
+  POKER_SMALL_BLIND, POKER_BIG_BLIND, getPokerMaxHands,
 } from '../common/constants/game.constants';
 import { Match, Agent } from '../database/schemas';
 import { decrypt } from '../common/crypto.util';
@@ -831,9 +831,10 @@ export class MatchManagerService {
         return;
       }
 
-      // Max hands limit to prevent infinite matches
-      if (handResult.pokerState.handNumber >= POKER_MAX_HANDS) {
-        // Find player with highest stack
+      // Max hands limit to prevent infinite matches (scales with player count)
+      const playerCount = Object.keys(handResult.pokerState.players).length;
+      const maxHands = getPokerMaxHands(playerCount);
+      if (handResult.pokerState.handNumber >= maxHands) {
         let bestSide: string | undefined;
         let bestStack = -1;
         let tied = false;
@@ -842,7 +843,7 @@ export class MatchManagerService {
           else if (player.stack === bestStack) { tied = true; }
         }
         const winningSide: Side | undefined = bestSide && !tied ? bestSide as Side : undefined;
-        this.logger.log(`Match ${matchId}: max hands (${POKER_MAX_HANDS}) reached, winner by stack: ${winningSide ?? 'draw'}`);
+        this.logger.log(`Match ${matchId}: max hands (${maxHands}/${playerCount}p) reached, winner by stack: ${winningSide ?? 'draw'}`);
         await this.endMatch(matchId, 'max_hands' as any, winningSide);
         return;
       }
