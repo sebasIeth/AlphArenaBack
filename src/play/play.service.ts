@@ -50,20 +50,16 @@ export class PlayService {
     }
 
     // Verify wallet balance (skip for zero-stake)
+    const matchToken = token || 'ALPHA';
     if (stakeAmount > 0) {
       const chain = agent.chain || 'solana';
-      const [tokenBalance, nativeBalance] = await Promise.all([
-        this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress),
-        this.settlementRouter.getAgentNativeBalance(chain, agent.walletAddress),
-      ]);
+      const tokenBalance = await this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, matchToken).catch(() => '0');
 
       if (parseFloat(tokenBalance) < stakeAmount) {
         throw new BadRequestException(
-          `Insufficient balance. You have ${tokenBalance} ALPHA but need ${stakeAmount}. Deposit to ${agent.walletAddress}`,
+          `Insufficient ${matchToken} balance. You have ${tokenBalance} but need ${stakeAmount}. Deposit to ${agent.walletAddress}`,
         );
       }
-
-      // Solana: platform wallet pays tx fees, agents don't need SOL
     }
 
     agent.status = 'queued';
