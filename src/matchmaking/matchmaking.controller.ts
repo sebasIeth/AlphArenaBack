@@ -40,6 +40,12 @@ export class MatchmakingController {
     if (!agent) throw new NotFoundException('Agent not found');
     if (agent.userId && agent.userId.toString() !== user.userId) throw new ForbiddenException('You do not own this agent');
     if (agent.status !== 'idle') throw new BadRequestException(`Agent cannot join queue because its status is "${agent.status}". It must be "idle".`);
+    // Auto-redirect to queue with players waiting (if agent supports that game)
+    const activeQueues = this.matchmakingService.getActiveGameTypes();
+    const compatibleQueue = activeQueues.find(q => agent.gameTypes.includes(q.gameType));
+    if (compatibleQueue && !activeQueues.find(q => q.gameType === dto.gameType)) {
+      dto.gameType = compatibleQueue.gameType;
+    }
     if (!agent.gameTypes.includes(dto.gameType)) throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
     if (!agent.walletAddress) throw new BadRequestException('Agent does not have a wallet. Please recreate the agent.');
 

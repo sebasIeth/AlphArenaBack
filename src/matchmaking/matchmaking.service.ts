@@ -125,6 +125,12 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     return this.queue.size();
   }
 
+  /** Get game types that have agents waiting, so new agents can join the same queue */
+  getActiveGameTypes(): { gameType: string; count: number }[] {
+    const types = this.queue.getGameTypes();
+    return types.map(gt => ({ gameType: gt, count: this.queue.getWaiting(gt).length })).filter(t => t.count > 0);
+  }
+
   getQueueEntries(gameType?: string): QueueEntryData[] {
     const all = this.queue.getAll();
     if (gameType) return all.filter((e) => e.gameType === gameType);

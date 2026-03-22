@@ -126,6 +126,18 @@ export class AgentApiService {
       );
     }
 
+    // Auto-select gameType: if someone is waiting in a queue the agent supports, join that one
+    const activeQueues = this.matchmakingService.getActiveGameTypes();
+    const compatibleQueue = activeQueues.find(q => agent.gameTypes.includes(q.gameType));
+    if (compatibleQueue && agent.gameTypes.includes(dto.gameType)) {
+      // Prefer the queue that already has players, unless the requested one also has players
+      const requestedQueue = activeQueues.find(q => q.gameType === dto.gameType);
+      if (!requestedQueue && compatibleQueue) {
+        dto.gameType = compatibleQueue.gameType;
+        this.logger.log(`Agent ${agentId} auto-redirected to ${dto.gameType} queue (${compatibleQueue.count} waiting)`);
+      }
+    }
+
     if (!agent.gameTypes.includes(dto.gameType)) {
       throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
     }
