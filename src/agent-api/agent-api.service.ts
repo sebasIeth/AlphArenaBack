@@ -149,6 +149,7 @@ export class AgentApiService {
         dto.stakeAmount ?? 0,
         dto.gameType,
         'pull',
+        dto.token,
       );
 
       return {
@@ -156,6 +157,7 @@ export class AgentApiService {
         agentId,
         gameType: dto.gameType,
         stakeAmount: dto.stakeAmount ?? 0,
+        token: dto.token || 'ALPHA',
       };
     } catch (err) {
       agent.status = 'idle';

@@ -8,6 +8,10 @@ export class JoinQueueDto {
   @IsNumber()
   @Min(0)
   stakeAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  token?: string;
 }
 
 export class LeaveQueueDto {}
