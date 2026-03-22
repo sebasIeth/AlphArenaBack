@@ -4,7 +4,10 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ApiKeyAuthGuard } from '../common/guards/api-key-auth.guard';
+import { JwtOrApiKeyGuard } from '../common/guards/jwt-or-apikey.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CurrentAgent } from '../common/decorators/current-agent.decorator';
 import { AuthPayload } from '../common/types';
 import { X402VerifierService } from './x402-verifier.service';
 import { SolanaSettlementService } from './solana-settlement.service';
@@ -14,7 +17,7 @@ import { Model } from 'mongoose';
 import { Agent } from '../database/schemas';
 
 @Controller('x402')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtOrApiKeyGuard)
 export class X402StakeController {
   private readonly logger = new Logger(X402StakeController.name);
 
@@ -23,11 +26,14 @@ export class X402StakeController {
     private readonly solanaSettlement: SolanaSettlementService,
     private readonly paymentStore: X402PaymentStore,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    private readonly jwtGuard: JwtAuthGuard,
+    private readonly apiKeyGuard: ApiKeyAuthGuard,
   ) {}
 
   @Post('stake')
   async stake(
-    @CurrentUser() user: AuthPayload,
+    @CurrentUser() user: AuthPayload | undefined,
+    @CurrentAgent() agentAuth: Agent | undefined,
     @Body() body: { agentId: string; stakeAmount: number; gameType: string },
     @Headers('x-payment-tx') paymentTx: string | undefined,
     @Res() res: Response,
@@ -40,7 +46,13 @@ export class X402StakeController {
 
     const agent = await this.agentModel.findById(agentId);
     if (!agent) throw new BadRequestException('Agent not found');
-    if (agent.userId && agent.userId.toString() !== user.userId) throw new BadRequestException('You do not own this agent');
+
+    // Verify ownership: JWT user must own the agent, or API key must be the agent itself
+    if (user?.userId) {
+      if (agent.userId && agent.userId.toString() !== user.userId) throw new BadRequestException('You do not own this agent');
+    } else if (agentAuth) {
+      if ((agentAuth as any)._id.toString() !== agentId) throw new BadRequestException('API key does not match this agent');
+    }
 
     const platformWallet = this.solanaSettlement.getPlatformWalletAddress();
     const usdcMint = this.solanaSettlement.getTokenMint('USDC');
