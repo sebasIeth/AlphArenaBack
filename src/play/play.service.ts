@@ -223,6 +223,7 @@ export class PlayService {
       stats: { wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0 },
       walletAddress: user.walletAddress,
       walletPrivateKey: user.walletPrivateKey,
+      chain: 'solana',
     });
 
     this.logger.log(`Created human agent "${user.username}" for user ${userId} (gameType=${gameType})`);
