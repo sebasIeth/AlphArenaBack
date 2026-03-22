@@ -14,6 +14,10 @@ class JoinDto {
   @Min(MIN_STAKE)
   @Max(MAX_STAKE)
   stakeAmount: number;
+
+  @IsOptional()
+  @IsString()
+  token?: string;
 }
 
 class WithdrawDto {
@@ -44,7 +48,7 @@ export class PlayController {
   @Post('join')
   @HttpCode(201)
   async join(@CurrentUser() user: AuthPayload, @Body() dto: JoinDto) {
-    return this.playService.joinQueue(user.userId, dto.gameType, dto.stakeAmount);
+    return this.playService.joinQueue(user.userId, dto.gameType, dto.stakeAmount, dto.token);
   }
 
   @Post('cancel')

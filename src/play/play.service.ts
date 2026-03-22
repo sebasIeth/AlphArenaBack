@@ -20,7 +20,7 @@ export class PlayService {
     private readonly humanMoveService: HumanMoveService,
   ) {}
 
-  async joinQueue(userId: string, gameType: string, stakeAmount: number) {
+  async joinQueue(userId: string, gameType: string, stakeAmount: number, token?: string) {
     const agent = await this.getOrCreateHumanAgent(userId, gameType);
 
     // If already queued, check if actually in the matchmaking queue
@@ -70,7 +70,7 @@ export class PlayService {
     await agent.save();
 
     try {
-      await this.matchmakingService.joinQueue(agent._id.toString(), userId, agent.eloRating, stakeAmount, gameType, 'human');
+      await this.matchmakingService.joinQueue(agent._id.toString(), userId, agent.eloRating, stakeAmount, gameType, 'human', token);
       return {
         message: 'Successfully joined the matchmaking queue',
         agentId: agent._id.toString(),
