@@ -11,6 +11,7 @@ import { HumanMoveService } from '../orchestrator/human-move.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { MatchManagerService } from '../orchestrator/match-manager.service';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
+import { X402PaymentStore } from '../settlement/x402-payment-store.service';
 import { getLegalActions } from '../game-engine/poker';
 import { RegisterAgentDto } from './dto/register.dto';
 import { JoinQueueDto } from './dto/queue.dto';
@@ -28,6 +29,7 @@ export class AgentApiService {
     private readonly matchmakingService: MatchmakingService,
     private readonly matchManager: MatchManagerService,
     private readonly settlementRouter: SettlementRouterService,
+    private readonly x402PaymentStore: X402PaymentStore,
   ) {}
 
   async registerAgent(dto: RegisterAgentDto) {
@@ -136,6 +138,28 @@ export class AgentApiService {
       throw new BadRequestException(
         `Agent wallet has no balance. Deposit ALPHA, USDC, or SOL to ${agent.walletAddress} before playing.`,
       );
+    }
+
+    // USDC stakes require x402 pre-payment
+    const matchToken = dto.token || 'ALPHA';
+    if (matchToken === 'USDC' && (dto.stakeAmount ?? 0) > 0) {
+      const x402Payment = this.x402PaymentStore.getPayment(agentId);
+      if (!x402Payment) {
+        throw new BadRequestException(
+          'USDC matches require x402 payment. POST to /x402/stake first, transfer USDC, verify, then join.',
+        );
+      }
+      if (x402Payment.amount < (dto.stakeAmount ?? 0)) {
+        throw new BadRequestException(
+          `x402 payment insufficient: paid ${x402Payment.amount} USDC but stake requires ${dto.stakeAmount}`,
+        );
+      }
+    } else if (matchToken === 'ALPHA' && (dto.stakeAmount ?? 0) > 0) {
+      if (parseFloat(alphaBalance) < (dto.stakeAmount ?? 0)) {
+        throw new BadRequestException(
+          `Insufficient ALPHA balance: ${alphaBalance} but need ${dto.stakeAmount}. Deposit to ${agent.walletAddress}`,
+        );
+      }
     }
 
     agent.status = 'queued';
