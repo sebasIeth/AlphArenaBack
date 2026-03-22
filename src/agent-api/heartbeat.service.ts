@@ -48,8 +48,8 @@ export class HeartbeatService {
       }
     }
 
-    // Should the agent queue up?
-    const shouldQueueNow = agent.status === 'idle';
+    // Should the agent queue up? Only if idle AND not in any active match
+    const shouldQueueNow = agent.status === 'idle' && dueGameIds.length === 0;
 
     // Recommended heartbeat cadence (matches Clawleague style)
     let recommendedHeartbeatSeconds: number;
