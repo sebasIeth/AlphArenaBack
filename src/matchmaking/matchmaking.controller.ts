@@ -93,15 +93,17 @@ export class MatchmakingController {
       }
     }
 
-    agent.status = 'queued';
-    await agent.save();
-
     try {
+      // Join queue first, then update agent status to avoid desync
       await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type, matchToken, agent.gameTypes);
+      agent.status = 'queued';
+      await agent.save();
       return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: dto.gameType, stakeAmount: dto.stakeAmount, token: matchToken };
     } catch (err) {
+      // If queue join succeeded but status update failed, remove from queue
+      try { await this.matchmakingService.leaveQueue(dto.agentId); } catch {}
       agent.status = 'idle';
-      await agent.save();
+      try { await agent.save(); } catch {}
       throw new InternalServerErrorException(err instanceof Error ? err.message : 'Failed to join queue');
     }
   }

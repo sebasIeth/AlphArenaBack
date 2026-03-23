@@ -40,9 +40,11 @@ export class MatchmakingQueue {
       eloRating: doc.eloRating,
       stakeAmount: doc.stakeAmount,
       gameType: doc.gameType,
+      gameTypes: doc.gameTypes || [doc.gameType],
       status: doc.status as QueueEntryStatus,
       joinedAt: doc.joinedAt,
       token: doc.token,
+      agentType: doc.agentType,
     }));
     this.logger.log(`Loaded ${this.entries.length} queue entries from database`);
   }
@@ -57,6 +59,9 @@ export class MatchmakingQueue {
       eloRating: entry.eloRating,
       stakeAmount: entry.stakeAmount,
       gameType: entry.gameType,
+      gameTypes: entry.gameTypes || [entry.gameType],
+      token: entry.token,
+      agentType: entry.agentType,
       status: entry.status,
       joinedAt: entry.joinedAt,
     });
@@ -96,5 +101,30 @@ export class MatchmakingQueue {
     const types = new Set<string>();
     for (const entry of this.entries) types.add(entry.gameType);
     return [...types];
+  }
+
+  /** Remove entries older than the given threshold and stuck 'pairing' entries */
+  async cleanupStaleEntries(staleMs: number = 10 * 60 * 1000, pairingTimeoutMs: number = 60 * 1000): Promise<number> {
+    const now = Date.now();
+    const staleThreshold = new Date(now - staleMs);
+    const pairingThreshold = new Date(now - pairingTimeoutMs);
+
+    // Find entries to remove: stale waiting entries or stuck pairing entries
+    const toRemove = this.entries.filter(e =>
+      (e.joinedAt < staleThreshold) ||
+      (e.status === 'pairing' && e.joinedAt < pairingThreshold),
+    );
+
+    if (toRemove.length === 0) return 0;
+
+    for (const entry of toRemove) {
+      const index = this.entries.findIndex(e => e.agentId === entry.agentId);
+      if (index !== -1) this.entries.splice(index, 1);
+    }
+
+    const agentIds = toRemove.map(e => e.agentId);
+    await this.queueEntryModel.deleteMany({ agentId: { $in: agentIds } });
+    this.logger.log(`Cleaned ${toRemove.length} stale/stuck queue entries: ${agentIds.join(', ')}`);
+    return toRemove.length;
   }
 }

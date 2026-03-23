@@ -18,6 +18,15 @@ export class QueueEntry extends Document {
   @Prop({ required: true })
   gameType: string;
 
+  @Prop({ type: [String], default: [] })
+  gameTypes: string[];
+
+  @Prop({ type: String })
+  token: string;
+
+  @Prop({ type: String })
+  agentType: string;
+
   @Prop({ type: String, enum: ['waiting', 'pairing'], default: 'waiting' })
   status: string;
 
