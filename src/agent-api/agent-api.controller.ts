@@ -2,7 +2,7 @@ import {
   Controller, Post, Get, Body, Param, UseGuards, HttpCode, BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApiKeyAuthGuard } from '../common/guards/api-key-auth.guard';
 import { CurrentAgent } from '../common/decorators/current-agent.decorator';
@@ -48,7 +48,7 @@ export class AgentApiController {
     if (agentDoc.userId) {
       throw new BadRequestException('Agent is already linked to a user. Unlink first or create a new agent.');
     }
-    agentDoc.userId = body.userId;
+    agentDoc.userId = new Types.ObjectId(body.userId);
     await agentDoc.save();
     return { message: 'Agent linked to user', agentId: agentDoc._id.toString(), userId: body.userId };
   }
