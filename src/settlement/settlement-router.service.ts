@@ -17,7 +17,7 @@ export class SettlementRouterService {
     private readonly solanaSettlement: SolanaSettlementService,
   ) {}
 
-  getTokenDecimals(chain: string, token: string = 'ALPHA'): number {
+  getTokenDecimals(chain: string, token: string = 'USDC'): number {
     if (chain === 'solana') {
       return this.solanaSettlement.getTokenDecimals(token);
     }
@@ -29,7 +29,7 @@ export class SettlementRouterService {
     agentPrivateKey: string,
     to: string,
     amount: bigint,
-    token: string = 'ALPHA',
+    token: string = 'USDC',
   ): Promise<string | null> {
     if (chain === 'solana') {
       return this.solanaSettlement.transferTokenFromAgent(agentPrivateKey, to, amount, token);
@@ -41,7 +41,7 @@ export class SettlementRouterService {
     chain: string,
     to: string,
     amount: bigint,
-    token: string = 'ALPHA',
+    token: string = 'USDC',
   ): Promise<string | null> {
     if (chain === 'solana') {
       return this.solanaSettlement.transferTokenFromPlatform(to, amount, token);
@@ -55,7 +55,7 @@ export class SettlementRouterService {
   async sendFee(
     chain: string,
     amount: bigint,
-    token: string = 'ALPHA',
+    token: string = 'USDC',
   ): Promise<string | null> {
     if (chain === 'solana') {
       return this.solanaSettlement.sendFeeToFeeWallet(amount, token);
@@ -64,7 +64,7 @@ export class SettlementRouterService {
     return null;
   }
 
-  async getAgentTokenBalance(chain: string, walletAddress: string, token: string = 'ALPHA'): Promise<string> {
+  async getAgentTokenBalance(chain: string, walletAddress: string, token: string = 'USDC'): Promise<string> {
     if (chain === 'solana') {
       return this.solanaSettlement.getAgentTokenBalance(walletAddress, token);
     }
@@ -111,7 +111,7 @@ export class SettlementRouterService {
     matchId: string,
     winnerAddress: string,
     amount: bigint,
-    token: string = 'ALPHA',
+    token: string = 'USDC',
   ): Promise<string | null> {
     if (chain === 'solana') {
       return this.solanaSettlement.transferTokenFromPlatform(winnerAddress, amount, token);
@@ -123,7 +123,7 @@ export class SettlementRouterService {
     chain: string,
     matchId: string,
     refundTargets?: Array<{ address: string; amount: bigint }>,
-    token: string = 'ALPHA',
+    token: string = 'USDC',
   ): Promise<string | null> {
     if (chain === 'solana') {
       if (!refundTargets?.length) {

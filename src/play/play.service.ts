@@ -50,7 +50,7 @@ export class PlayService {
     }
 
     // Verify wallet balance and escrow stake
-    const matchToken = token || 'ALPHA';
+    const matchToken = token || 'USDC';
     const chain = agent.chain || 'solana';
     if (stakeAmount > 0) {
       const tokenBalance = await this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, matchToken).catch(() => '0');
@@ -240,7 +240,7 @@ export class PlayService {
     return agent;
   }
 
-  async withdraw(userId: string, amount: number, to: string, token: string = 'ALPHA') {
+  async withdraw(userId: string, amount: number, to: string, token: string = 'USDC') {
     const user = await this.userModel.findById(userId).select('+walletPrivateKey');
     if (!user) throw new NotFoundException('User not found');
     if (!user.walletAddress || !user.walletPrivateKey) {

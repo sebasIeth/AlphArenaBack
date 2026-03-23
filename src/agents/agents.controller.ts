@@ -145,7 +145,7 @@ export class AgentsController {
     if (!destination) throw new BadRequestException('No destination address provided');
 
     const chain = agent.chain || 'solana';
-    const token = dto.token || 'ALPHA';
+    const token = dto.token || 'USDC';
     const decimals = this.settlementRouter.getTokenDecimals(chain, token);
     const amountToken = BigInt(Math.round(dto.amount * 10 ** decimals));
     const privKey = decrypt(agent.walletPrivateKey);

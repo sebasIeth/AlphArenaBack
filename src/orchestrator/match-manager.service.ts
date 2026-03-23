@@ -156,7 +156,7 @@ export class MatchManagerService {
     const matchData = {
       gameType,
       chain: agentA.chain || 'solana',
-      token: agentA.token || 'ALPHA',
+      token: agentA.token || 'USDC',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -223,7 +223,7 @@ export class MatchManagerService {
     const matchData = {
       gameType: 'marrakech',
       chain: agentA.chain || 'solana',
-      token: agentA.token || 'ALPHA',
+      token: agentA.token || 'USDC',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -293,7 +293,7 @@ export class MatchManagerService {
     const matchData = {
       gameType: 'chess',
       chain: agentA.chain || 'solana',
-      token: agentA.token || 'ALPHA',
+      token: agentA.token || 'USDC',
       agents: {
         a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
         b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
@@ -386,7 +386,7 @@ export class MatchManagerService {
     const matchData = {
       gameType: 'poker',
       chain: agents[0].chain || 'solana',
-      token: agents[0].token || 'ALPHA',
+      token: agents[0].token || 'USDC',
       agents: matchAgents,
       stakeAmount, potAmount, status: 'starting',
       currentBoard: [], currentTurn: 'a', moveCount: 0,
@@ -496,7 +496,7 @@ export class MatchManagerService {
     // Transfer stake from each agent wallet to platform, then escrow
     // Skip on-chain settlement for zero-stake matches
     const matchChain = matchDoc.chain || 'solana';
-    const matchToken = matchDoc.token || 'ALPHA';
+    const matchToken = matchDoc.token || 'USDC';
     if (matchDoc.stakeAmount > 0) {
       const tokenDecimals = this.settlementRouter.getTokenDecimals(matchChain, matchToken);
       const stakeAmountToken = BigInt(matchDoc.stakeAmount) * BigInt(10 ** tokenDecimals);

@@ -79,7 +79,7 @@ export class ResultHandlerService {
     );
 
     const matchChain = matchDoc.chain || 'solana';
-    const matchToken = matchDoc.token || 'ALPHA';
+    const matchToken = matchDoc.token || 'USDC';
     const tokenDecimals = this.settlementRouter.getTokenDecimals(matchChain, matchToken);
 
     let payoutTxHash: string | null = null;
@@ -151,7 +151,7 @@ export class ResultHandlerService {
       const outcome = winningSide === side ? 'win' : winningSide ? 'loss' : 'draw';
       const eloDelta = eloChanges[side] ?? 0;
       const earnings = winningSide === side ? this.calculateEarnings(matchDoc) : 0;
-      const token = matchDoc.token || 'ALPHA';
+      const token = matchDoc.token || 'USDC';
       await this.updateAgentStats(agent.agentId, outcome, eloDelta, earnings, token);
     }
 
@@ -200,7 +200,7 @@ export class ResultHandlerService {
     outcome: 'win' | 'loss' | 'draw',
     eloDelta: number,
     earnings: number,
-    token: string = 'ALPHA',
+    token: string = 'USDC',
   ): Promise<void> {
     try {
       const statsUpdate: Record<string, number> = { 'stats.totalMatches': 1 };

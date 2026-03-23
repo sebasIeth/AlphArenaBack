@@ -54,7 +54,7 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       if (!stakesCompatible(entryA.stakeAmount, entryB.stakeAmount)) continue;
 
       // Same token required
-      if ((entryA.token || 'ALPHA') !== (entryB.token || 'ALPHA')) continue;
+      if ((entryA.token || 'USDC') !== (entryB.token || 'USDC')) continue;
 
       const chosenGame = pickRandomGameType(common);
       pairs.push([entryA, entryB, chosenGame]);
@@ -87,7 +87,7 @@ export function findPokerGroup(waitingEntries: QueueEntryData[]): QueueEntryData
     const baseStake = group[0].stakeAmount;
 
     // Same token required
-    if ((candidate.token || 'ALPHA') !== (group[0].token || 'ALPHA')) continue;
+    if ((candidate.token || 'USDC') !== (group[0].token || 'USDC')) continue;
 
     // ELO range check against the group average
     const avgElo = group.reduce((s, e) => s + e.eloRating, 0) / group.length;

@@ -119,7 +119,7 @@ export class SolanaSettlementService implements OnModuleInit {
   /**
    * Get token decimals for a given token symbol or mint.
    */
-  getTokenDecimals(tokenMintOrSymbol: string = 'ALPHA'): number {
+  getTokenDecimals(tokenMintOrSymbol: string = 'USDC'): number {
     return this.resolveToken(tokenMintOrSymbol)?.decimals ?? 6;
   }
 
@@ -138,7 +138,7 @@ export class SolanaSettlementService implements OnModuleInit {
     agentSecretKeyBase58: string,
     to: string,
     amount: bigint,
-    tokenMintOrSymbol: string = 'ALPHA',
+    tokenMintOrSymbol: string = 'USDC',
   ): Promise<string | null> {
     if (!this.isReady()) {
       this.logger.warn('transferTokenFromAgent skipped — not initialised');
@@ -182,7 +182,7 @@ export class SolanaSettlementService implements OnModuleInit {
   async transferTokenFromPlatform(
     to: string,
     amount: bigint,
-    tokenMintOrSymbol: string = 'ALPHA',
+    tokenMintOrSymbol: string = 'USDC',
   ): Promise<string | null> {
     if (!this.isReady()) {
       this.logger.warn('transferTokenFromPlatform skipped — not initialised');
@@ -222,7 +222,7 @@ export class SolanaSettlementService implements OnModuleInit {
    */
   async sendFeeToFeeWallet(
     amount: bigint,
-    tokenMintOrSymbol: string = 'ALPHA',
+    tokenMintOrSymbol: string = 'USDC',
   ): Promise<string | null> {
     if (!this.feeWalletAddress) {
       this.logger.warn('No fee wallet configured, fee stays in platform wallet');
@@ -234,7 +234,7 @@ export class SolanaSettlementService implements OnModuleInit {
   /**
    * Read SPL token balance for an address.
    */
-  async getAgentTokenBalance(walletAddress: string, tokenMintOrSymbol: string = 'ALPHA'): Promise<string> {
+  async getAgentTokenBalance(walletAddress: string, tokenMintOrSymbol: string = 'USDC'): Promise<string> {
     if (!this.isReady()) return '0';
 
     const token = this.resolveToken(tokenMintOrSymbol);
