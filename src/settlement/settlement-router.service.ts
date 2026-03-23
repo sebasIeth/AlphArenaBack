@@ -138,4 +138,10 @@ export class SettlementRouterService {
     }
     return this.evmSettlement.refund(matchId);
   }
+
+  async ensureTokenAccounts(chain: string, walletAddress: string): Promise<void> {
+    if (chain === 'solana') {
+      await this.solanaSettlement.ensureTokenAccounts(walletAddress);
+    }
+  }
 }

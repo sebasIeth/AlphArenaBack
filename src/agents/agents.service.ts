@@ -7,6 +7,7 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 import { DEFAULT_ELO } from '../common/constants/game.constants';
 import { OpenClawWsService } from '../openclaw-ws';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 import { Keypair } from '@solana/web3.js';
 import * as bs58 from 'bs58';
 
@@ -19,6 +20,7 @@ export class AgentsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly openclawWs: OpenClawWsService,
     @Inject(forwardRef(() => MatchmakingService)) private readonly matchmakingService: MatchmakingService,
+    private readonly settlementRouter: SettlementRouterService,
   ) {}
 
   async create(userId: string, dto: CreateAgentDto) {
@@ -72,6 +74,14 @@ export class AgentsService {
     const agent = await this.agentModel.create(agentData);
 
     this.logger.log(`Agent created: ${dto.name} (type=${agentType}) by user ${userId}`);
+
+    // Create token accounts in background if agent has its own wallet
+    if (agentType !== 'human' && agentData.walletAddress) {
+      this.settlementRouter.ensureTokenAccounts(agentData.chain as string || 'solana', agentData.walletAddress as string).catch((err) =>
+        this.logger.warn(`Failed to create ATAs for agent ${dto.name}: ${err.message}`),
+      );
+    }
+
     return { agent };
   }
 

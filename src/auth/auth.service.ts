@@ -14,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AuthPayload } from '../common/types';
+import { SettlementRouterService } from '../settlement/settlement-router.service';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +24,7 @@ export class AuthService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
+    private readonly settlementRouter: SettlementRouterService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -78,6 +80,11 @@ export class AuthService {
     const token = this.generateToken(payload);
 
     this.logger.log(`New user registered: ${username}`);
+
+    // Create token accounts in background (don't block registration)
+    this.settlementRouter.ensureTokenAccounts('solana', keypair.publicKey.toBase58()).catch((err) =>
+      this.logger.warn(`Failed to create ATAs for user ${username}: ${err.message}`),
+    );
 
     return {
       token,

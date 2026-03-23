@@ -242,10 +242,9 @@ export class SolanaSettlementService implements OnModuleInit {
 
     try {
       const owner = new PublicKey(walletAddress);
-      const ata = await getOrCreateAssociatedTokenAccount(
-        this.connection!, this.platformKeypair!, token.mint, owner, true,
-      );
-      const accountInfo = await getAccount(this.connection!, ata.address);
+      const { getAssociatedTokenAddressSync } = require('@solana/spl-token');
+      const ataAddress = getAssociatedTokenAddressSync(token.mint, owner, true);
+      const accountInfo = await getAccount(this.connection!, ataAddress);
       const rawBalance = accountInfo.amount;
       const divisor = BigInt(10 ** token.decimals);
       const whole = rawBalance / divisor;
@@ -281,5 +280,26 @@ export class SolanaSettlementService implements OnModuleInit {
 
   getSupportedTokens(): string[] {
     return [...this.tokens.keys()];
+  }
+
+  /**
+   * Create ATAs for all registered tokens for a given wallet.
+   * Called on user/agent creation so the wallet is ready to receive tokens.
+   */
+  async ensureTokenAccounts(walletAddress: string): Promise<void> {
+    if (!this.isReady()) return;
+
+    const owner = new PublicKey(walletAddress);
+    for (const [symbol, token] of this.tokens.entries()) {
+      try {
+        await getOrCreateAssociatedTokenAccount(
+          this.connection!, this.platformKeypair!, token.mint, owner, true,
+        );
+        this.logger.log(`ATA ensured for ${walletAddress} (${symbol})`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Failed to create ATA for ${walletAddress} (${symbol}): ${message}`);
+      }
+    }
   }
 }

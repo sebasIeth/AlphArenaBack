@@ -63,6 +63,11 @@ export class AgentApiService {
 
     this.logger.log(`Registered pull agent "${dto.name}" (id=${agent._id}, prefix=${prefix})`);
 
+    // Create token accounts in background
+    this.settlementRouter.ensureTokenAccounts('solana', agent.walletAddress).catch((err) =>
+      this.logger.warn(`Failed to create ATAs for agent ${dto.name}: ${err.message}`),
+    );
+
     return {
       agentId: agent._id.toString(),
       apiKey: rawKey,
