@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Agent, User, Match } from '../database/schemas';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { SettlementRouterService } from '../settlement/settlement-router.service';
+import { X402PaymentStore } from '../settlement/x402-payment-store.service';
 import { HumanMoveService } from '../orchestrator/human-move.service';
 import { DEFAULT_ELO } from '../common/constants/game.constants';
 
@@ -17,6 +18,7 @@ export class PlayService {
     @InjectModel(Match.name) private readonly matchModel: Model<Match>,
     private readonly matchmakingService: MatchmakingService,
     private readonly settlementRouter: SettlementRouterService,
+    private readonly x402PaymentStore: X402PaymentStore,
     private readonly humanMoveService: HumanMoveService,
   ) {}
 
@@ -81,6 +83,17 @@ export class PlayService {
       const escrowTx = await this.settlementRouter.transferTokenFromAgent(chain, privKey, platformWallet, amountAtomic, matchToken);
       if (!escrowTx) throw new BadRequestException(`${matchToken} escrow transfer failed`);
       this.logger.log(`Play escrow: user=${userId}, amount=${stakeAmount} ${matchToken}, tx=${escrowTx}`);
+
+      // Register payment in x402 store so matchmaking can validate it
+      if (matchToken === 'USDC') {
+        this.x402PaymentStore.setPayment(agent._id.toString(), {
+          txSignature: escrowTx,
+          amount: stakeAmount,
+          token: 'USDC',
+          verifiedAt: new Date(),
+          gameType: 'any',
+        });
+      }
     }
 
     agent.status = 'queued';
