@@ -13,6 +13,8 @@ import {
   createTransferInstruction,
   getAccount,
   getMint,
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
 } from '@solana/spl-token';
 import * as bs58 from 'bs58';
 
@@ -21,6 +23,7 @@ export type SolanaTokenSymbol = 'ALPHA' | 'USDC';
 interface TokenConfig {
   mint: PublicKey;
   decimals: number;
+  programId: PublicKey;
 }
 
 @Injectable()
@@ -66,21 +69,23 @@ export class SolanaSettlementService implements OnModuleInit {
         this.logger.log(`Fee wallet (receive-only): ${this.feeWalletAddress}`);
       }
 
-      // Register ALPHA token
+      // Register ALPHA token (Token-2022)
       if (alphaMint) {
         const mint = new PublicKey(alphaMint);
-        const mintInfo = await getMint(this.connection, mint);
-        this.tokens.set('ALPHA', { mint, decimals: mintInfo.decimals });
-        this.logger.log(`ALPHA token: ${alphaMint} (${mintInfo.decimals} decimals)`);
+        const programId = await this.detectTokenProgram(mint);
+        const mintInfo = await getMint(this.connection, mint, undefined, programId);
+        this.tokens.set('ALPHA', { mint, decimals: mintInfo.decimals, programId });
+        this.logger.log(`ALPHA token: ${alphaMint} (${mintInfo.decimals} decimals, ${programId.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Token'})`);
       }
 
       // Register USDC token
       const usdcMint = this.configService.solanaUsdcMint;
       if (usdcMint) {
         const mint = new PublicKey(usdcMint);
-        const mintInfo = await getMint(this.connection, mint);
-        this.tokens.set('USDC', { mint, decimals: mintInfo.decimals });
-        this.logger.log(`USDC token: ${usdcMint} (${mintInfo.decimals} decimals)`);
+        const programId = await this.detectTokenProgram(mint);
+        const mintInfo = await getMint(this.connection, mint, undefined, programId);
+        this.tokens.set('USDC', { mint, decimals: mintInfo.decimals, programId });
+        this.logger.log(`USDC token: ${usdcMint} (${mintInfo.decimals} decimals, ${programId.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Token'})`);
       }
 
       this.logger.log(
@@ -96,6 +101,12 @@ export class SolanaSettlementService implements OnModuleInit {
 
   private isReady(): boolean {
     return this.connection !== null && this.platformKeypair !== null;
+  }
+
+  private async detectTokenProgram(mint: PublicKey): Promise<PublicKey> {
+    const info = await this.connection!.getAccountInfo(mint);
+    if (info && info.owner.equals(TOKEN_2022_PROGRAM_ID)) return TOKEN_2022_PROGRAM_ID;
+    return TOKEN_PROGRAM_ID;
   }
 
   private getToken(symbol: string): TokenConfig | null {
@@ -159,14 +170,14 @@ export class SolanaSettlementService implements OnModuleInit {
     );
 
     const sourceAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!, this.platformKeypair!, token.mint, agentKeypair.publicKey, true,
+      this.connection!, this.platformKeypair!, token.mint, agentKeypair.publicKey, true, undefined, undefined, token.programId,
     );
     const destAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!, this.platformKeypair!, token.mint, toPublicKey, true,
+      this.connection!, this.platformKeypair!, token.mint, toPublicKey, true, undefined, undefined, token.programId,
     );
 
     const tx = new Transaction().add(
-      createTransferInstruction(sourceAta.address, destAta.address, agentKeypair.publicKey, amount),
+      createTransferInstruction(sourceAta.address, destAta.address, agentKeypair.publicKey, amount, [], token.programId),
     );
     const txSig = await sendAndConfirmTransaction(
       this.connection!, tx, [this.platformKeypair!, agentKeypair],
@@ -202,15 +213,15 @@ export class SolanaSettlementService implements OnModuleInit {
     );
 
     const sourceAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!, this.platformKeypair!, token.mint, this.platformKeypair!.publicKey, true,
+      this.connection!, this.platformKeypair!, token.mint, this.platformKeypair!.publicKey, true, undefined, undefined, token.programId,
     );
     const destAta = await getOrCreateAssociatedTokenAccount(
-      this.connection!, this.platformKeypair!, token.mint, toPublicKey, true,
+      this.connection!, this.platformKeypair!, token.mint, toPublicKey, true, undefined, undefined, token.programId,
     );
 
     const txSig = await transfer(
       this.connection!, this.platformKeypair!, sourceAta.address, destAta.address,
-      this.platformKeypair!, amount,
+      this.platformKeypair!, amount, [], token.programId,
     );
 
     this.logger.log(`Platform transfer confirmed: ${txSig}`);
@@ -243,8 +254,8 @@ export class SolanaSettlementService implements OnModuleInit {
     try {
       const owner = new PublicKey(walletAddress);
       const { getAssociatedTokenAddressSync } = require('@solana/spl-token');
-      const ataAddress = getAssociatedTokenAddressSync(token.mint, owner, true);
-      const accountInfo = await getAccount(this.connection!, ataAddress);
+      const ataAddress = getAssociatedTokenAddressSync(token.mint, owner, true, token.programId);
+      const accountInfo = await getAccount(this.connection!, ataAddress, undefined, token.programId);
       const rawBalance = accountInfo.amount;
       const divisor = BigInt(10 ** token.decimals);
       const whole = rawBalance / divisor;
@@ -320,7 +331,7 @@ export class SolanaSettlementService implements OnModuleInit {
     for (const [symbol, token] of this.tokens.entries()) {
       try {
         await getOrCreateAssociatedTokenAccount(
-          this.connection!, this.platformKeypair!, token.mint, owner, true,
+          this.connection!, this.platformKeypair!, token.mint, owner, true, undefined, undefined, token.programId,
         );
         this.logger.log(`ATA ensured for ${walletAddress} (${symbol})`);
       } catch (error: unknown) {
