@@ -20,22 +20,19 @@ export class PlayService {
     private readonly humanMoveService: HumanMoveService,
   ) {}
 
-  async joinQueue(userId: string, gameType: string, stakeAmount: number, token?: string) {
-    const agent = await this.getOrCreateHumanAgent(userId, gameType);
+  async joinQueue(userId: string, gameType?: string, stakeAmountInput?: number, token?: string) {
+    const agent = await this.getOrCreateHumanAgent(userId);
 
     // If already queued, check if actually in the matchmaking queue
     if (agent.status === 'queued') {
       const inQueue = await this.matchmakingService.getQueueStatus(agent._id.toString());
       if (inQueue) {
-        // Already queued — return success
         return {
           message: 'Already in the matchmaking queue',
           agentId: agent._id.toString(),
-          gameType,
           stakeAmount: inQueue.stakeAmount,
         };
       }
-      // Stale status from server restart — reset
       this.logger.log(`Recovering stale queued status for human agent ${agent._id}`);
       agent.status = 'idle';
       await agent.save();
@@ -49,9 +46,19 @@ export class PlayService {
       throw new BadRequestException('Wallet not found. Please contact support.');
     }
 
-    // Verify wallet balance and escrow stake
+    // Auto-calculate stake: $1 USD equivalent
     const matchToken = token || 'USDC';
     const chain = agent.chain || 'solana';
+    let stakeAmount = stakeAmountInput ?? 1;
+    if (matchToken === 'ALPHA') {
+      const alphaPrice = await this.settlementRouter.getAlphaPriceUsd();
+      if (alphaPrice && alphaPrice > 0) {
+        stakeAmount = Math.ceil(1 / alphaPrice);
+      }
+    } else {
+      stakeAmount = 1;
+    }
+
     if (stakeAmount > 0) {
       const tokenBalance = await this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, matchToken).catch(() => '0');
 
@@ -80,11 +87,11 @@ export class PlayService {
     await agent.save();
 
     try {
-      await this.matchmakingService.joinQueue(agent._id.toString(), userId, agent.eloRating, stakeAmount, gameType, 'human', token, agent.gameTypes);
+      const queueGameType = gameType || 'any';
+      await this.matchmakingService.joinQueue(agent._id.toString(), userId, agent.eloRating, stakeAmount, queueGameType, 'human', token);
       return {
         message: 'Successfully joined the matchmaking queue',
         agentId: agent._id.toString(),
-        gameType,
         stakeAmount,
       };
     } catch (err) {
@@ -202,12 +209,11 @@ export class PlayService {
     return { success: true };
   }
 
-  async getOrCreateHumanAgent(userId: string, gameType: string): Promise<Agent> {
-    // Find an existing human agent for this user that supports this game type
+  async getOrCreateHumanAgent(userId: string): Promise<Agent> {
+    // Find existing human agent for this user (one per user, plays all games)
     let agent = await this.agentModel.findOne({
       userId,
       type: 'human',
-      gameTypes: gameType,
       status: { $ne: 'disabled' },
     });
 
@@ -227,7 +233,7 @@ export class PlayService {
       userId,
       name: user.username,
       type: 'human',
-      gameTypes: [gameType],
+      gameTypes: [],
       eloRating: DEFAULT_ELO,
       status: 'idle',
       stats: { wins: 0, losses: 0, draws: 0, totalMatches: 0, winRate: 0, totalEarnings: 0 },
@@ -236,7 +242,7 @@ export class PlayService {
       chain: 'solana',
     });
 
-    this.logger.log(`Created human agent "${user.username}" for user ${userId} (gameType=${gameType})`);
+    this.logger.log(`Created human agent "${user.username}" for user ${userId}`);
     return agent;
   }
 

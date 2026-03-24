@@ -7,13 +7,13 @@ import { AuthPayload } from '../common/types';
 import { MIN_STAKE, MAX_STAKE } from '../common/constants/game.constants';
 
 class JoinDto {
+  @IsOptional()
   @IsString()
-  gameType: string;
+  gameType?: string;
 
+  @IsOptional()
   @IsNumber()
-  @Min(MIN_STAKE)
-  @Max(MAX_STAKE)
-  stakeAmount: number;
+  stakeAmount?: number;
 
   @IsOptional()
   @IsString()
