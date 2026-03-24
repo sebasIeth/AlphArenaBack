@@ -12,20 +12,8 @@ function stakesCompatible(stakeA: number, stakeB: number): boolean {
   return smaller >= larger * (1 - STAKE_TOLERANCE);
 }
 
-/** Find common game types between two entries */
-function getCommonGameTypes(a: QueueEntryData, b: QueueEntryData): string[] {
-  const aTypes = a.gameTypes || [a.gameType];
-  const bTypes = b.gameTypes || [b.gameType];
-  return aTypes.filter(t => bTypes.includes(t));
-}
-
-/** Pick a random game type from common ones */
-function pickRandomGameType(common: string[]): string {
-  return common[Math.floor(Math.random() * common.length)];
-}
-
 /**
- * Universal pairing: match any 2 agents with compatible stake/elo and at least 1 common game type.
+ * Universal pairing: match any 2 agents with compatible stake/elo and the same requested gameType.
  * Returns pairs with the chosen gameType.
  */
 export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryData, QueueEntryData, string]> {
@@ -41,9 +29,8 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       const entryB = sorted[j];
       if (paired.has(entryB.agentId)) continue;
 
-      // Must have at least 1 common game type
-      const common = getCommonGameTypes(entryA, entryB);
-      if (common.length === 0) continue;
+      // Must be queuing for the same game type
+      if (entryA.gameType !== entryB.gameType) continue;
 
       if (process.env.NODE_ENV !== 'development' && entryA.userId === entryB.userId) {
         const hasHumanOrPull = entryA.agentType === 'human' || entryB.agentType === 'human'
@@ -56,7 +43,7 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       // Same token required
       if ((entryA.token || 'USDC') !== (entryB.token || 'USDC')) continue;
 
-      const chosenGame = pickRandomGameType(common);
+      const chosenGame = entryA.gameType;
       pairs.push([entryA, entryB, chosenGame]);
       paired.add(entryA.agentId);
       paired.add(entryB.agentId);
@@ -68,14 +55,11 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
 
 /**
  * For poker: group 2-9 compatible agents into a single table.
- * Only groups agents that share "poker" in their game types.
+ * Only groups agents that queued for "poker".
  */
 export function findPokerGroup(waitingEntries: QueueEntryData[]): QueueEntryData[] | null {
-  // Filter to agents that support poker
-  const pokerEntries = waitingEntries.filter(e => {
-    const types = e.gameTypes || [e.gameType];
-    return types.includes('poker');
-  });
+  // Filter to agents that queued for poker
+  const pokerEntries = waitingEntries.filter(e => e.gameType === 'poker');
 
   if (pokerEntries.length < POKER_MIN_PLAYERS) return null;
 

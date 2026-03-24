@@ -48,7 +48,7 @@ export class AgentApiService {
       userId: dto.userId ?? null as any,
       name: dto.name,
       type: 'pull',
-      gameTypes: dto.gameTypes,
+      gameTypes: dto.gameTypes || [],
       walletAddress: dto.walletAddress ?? walletAddress,
       walletPrivateKey,
       chain: 'solana',
@@ -75,7 +75,7 @@ export class AgentApiService {
       claimToken,
       claimUrl: `https://app.alpharena.ai/claim/${claimToken}`,
       name: dto.name,
-      gameTypes: dto.gameTypes,
+      gameTypes: dto.gameTypes || [],
       walletAddress: agent.walletAddress,
     };
   }
@@ -129,12 +129,6 @@ export class AgentApiService {
       throw new BadRequestException(
         `Agent is already in the queue for ${existingEntry.gameType}. Call POST /v1/queue/leave first, or wait for the match.`,
       );
-    }
-
-    // No auto-redirect: agents choose their game type freely
-
-    if (!agent.gameTypes.includes(dto.gameType)) {
-      throw new BadRequestException(`Agent does not support game type "${dto.gameType}".`);
     }
 
     if (!agent.walletAddress) {

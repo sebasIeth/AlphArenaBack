@@ -1,4 +1,4 @@
-import { IsString, MinLength, MaxLength, IsArray, ArrayMinSize, IsIn, IsOptional } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsArray, IsIn, IsOptional } from 'class-validator';
 
 export class RegisterAgentDto {
   @IsString()
@@ -16,10 +16,10 @@ export class RegisterAgentDto {
   @MaxLength(30)
   agentProvider?: string;
 
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @IsIn(['chess', 'poker', 'marrakech', 'reversi'], { each: true })
-  gameTypes: string[];
+  gameTypes?: string[];
 
   @IsOptional()
   @IsString()
