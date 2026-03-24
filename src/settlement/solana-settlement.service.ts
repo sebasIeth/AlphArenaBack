@@ -219,9 +219,11 @@ export class SolanaSettlementService implements OnModuleInit {
       this.connection!, this.platformKeypair!, token.mint, toPublicKey, true, undefined, undefined, token.programId,
     );
 
-    const txSig = await transfer(
-      this.connection!, this.platformKeypair!, sourceAta.address, destAta.address,
-      this.platformKeypair!, amount, undefined, token.programId,
+    const tx = new Transaction().add(
+      createTransferInstruction(sourceAta.address, destAta.address, this.platformKeypair!.publicKey, amount, [], token.programId),
+    );
+    const txSig = await sendAndConfirmTransaction(
+      this.connection!, tx, [this.platformKeypair!],
     );
 
     this.logger.log(`Platform transfer confirmed: ${txSig}`);
