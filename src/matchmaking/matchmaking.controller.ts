@@ -83,6 +83,17 @@ export class MatchmakingController {
           );
         }
       } else {
+        // ALPHA: validate minimum $1 USD equivalent
+        const alphaPrice = await this.settlementRouter.getAlphaPriceUsd();
+        if (alphaPrice) {
+          const stakeUsd = dto.stakeAmount * alphaPrice;
+          if (stakeUsd < 1) {
+            const minAlpha = Math.ceil(1 / alphaPrice);
+            throw new BadRequestException(
+              `Minimum stake is $1 USD. At current ALPHA price ($${alphaPrice.toFixed(6)}), you need at least ${minAlpha} ALPHA.`,
+            );
+          }
+        }
         // ALPHA: direct balance check
         const tokenBalance = await this.settlementRouter.getAgentTokenBalance(chain, agent.walletAddress, matchToken);
         if (parseFloat(tokenBalance) < dto.stakeAmount) {

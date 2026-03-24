@@ -170,6 +170,17 @@ export class AgentApiService {
         );
       }
     } else if (matchToken === 'ALPHA' && (dto.stakeAmount ?? 0) > 0) {
+      // Validate minimum $1 USD equivalent
+      const alphaPrice = await this.settlementRouter.getAlphaPriceUsd();
+      if (alphaPrice) {
+        const stakeUsd = (dto.stakeAmount ?? 0) * alphaPrice;
+        if (stakeUsd < 1) {
+          const minAlpha = Math.ceil(1 / alphaPrice);
+          throw new BadRequestException(
+            `Minimum stake is $1 USD. At current ALPHA price ($${alphaPrice.toFixed(6)}), you need at least ${minAlpha} ALPHA.`,
+          );
+        }
+      }
       if (parseFloat(alphaBalance) < (dto.stakeAmount ?? 0)) {
         throw new BadRequestException(
           `Insufficient ALPHA balance: ${alphaBalance} but need ${dto.stakeAmount}. Deposit to ${agent.walletAddress}`,

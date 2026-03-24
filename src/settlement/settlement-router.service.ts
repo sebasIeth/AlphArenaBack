@@ -144,4 +144,8 @@ export class SettlementRouterService {
       await this.solanaSettlement.ensureTokenAccounts(walletAddress);
     }
   }
+
+  async getAlphaPriceUsd(): Promise<number | null> {
+    return this.solanaSettlement.getAlphaPriceUsd();
+  }
 }

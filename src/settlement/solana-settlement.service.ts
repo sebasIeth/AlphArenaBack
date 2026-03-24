@@ -282,6 +282,33 @@ export class SolanaSettlementService implements OnModuleInit {
     return [...this.tokens.keys()];
   }
 
+  // ── ALPHA price from DexScreener ──
+  private alphaPriceUsd: number | null = null;
+  private alphaPriceLastFetch = 0;
+  private readonly ALPHA_PRICE_TTL = 60_000; // 60s cache
+
+  async getAlphaPriceUsd(): Promise<number | null> {
+    if (this.alphaPriceUsd !== null && Date.now() - this.alphaPriceLastFetch < this.ALPHA_PRICE_TTL) {
+      return this.alphaPriceUsd;
+    }
+    const mint = this.getTokenMint('ALPHA');
+    if (!mint) return null;
+    try {
+      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+      if (!res.ok) return this.alphaPriceUsd;
+      const data = await res.json();
+      const price = data?.pairs?.[0]?.priceUsd ? parseFloat(data.pairs[0].priceUsd) : null;
+      if (price !== null && !isNaN(price)) {
+        this.alphaPriceUsd = price;
+        this.alphaPriceLastFetch = Date.now();
+        this.logger.log(`ALPHA price updated: $${price}`);
+      }
+      return this.alphaPriceUsd;
+    } catch {
+      return this.alphaPriceUsd;
+    }
+  }
+
   /**
    * Create ATAs for all registered tokens for a given wallet.
    * Called on user/agent creation so the wallet is ready to receive tokens.
