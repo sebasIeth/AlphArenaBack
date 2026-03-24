@@ -19,7 +19,7 @@ export const PIECE = {
   WHITE: 2,
 } as const;
 
-export const GAME_TYPES = ['marrakech', 'chess', 'poker'] as const;
+export const GAME_TYPES = ['chess', 'poker'] as const;
 
 export const POKER_SMALL_BLIND = 20;
 export const POKER_BIG_BLIND = 40;

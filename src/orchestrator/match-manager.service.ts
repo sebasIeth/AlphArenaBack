@@ -89,7 +89,7 @@ export class MatchManagerService {
 
   /**
    * Create a match with N agents.
-   * For 2-player games (chess, marrakech, reversi) exactly 2 agents are required.
+   * For 2-player games (chess, reversi) exactly 2 agents are required.
    * For poker, 2+ agents are accepted.
    */
   async createMatchMulti(
