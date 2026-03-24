@@ -221,7 +221,7 @@ export class SolanaSettlementService implements OnModuleInit {
 
     const txSig = await transfer(
       this.connection!, this.platformKeypair!, sourceAta.address, destAta.address,
-      this.platformKeypair!, amount, [], token.programId,
+      this.platformKeypair!, amount, undefined, token.programId,
     );
 
     this.logger.log(`Platform transfer confirmed: ${txSig}`);
