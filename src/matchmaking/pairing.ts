@@ -1,9 +1,12 @@
-import { ELO_MATCH_RANGE } from '../common/constants/game.constants';
+import { ELO_MATCH_RANGE, GAME_TYPES } from '../common/constants/game.constants';
 import { QueueEntryData } from './matchmaking.queue';
 
 const STAKE_TOLERANCE = 0.2;
 const POKER_MAX_PLAYERS = 9;
 const POKER_MIN_PLAYERS = 2;
+
+/** 2-player game types the system can pick from */
+const TWO_PLAYER_GAMES = GAME_TYPES.filter(g => g !== 'poker');
 
 function stakesCompatible(stakeA: number, stakeB: number): boolean {
   const larger = Math.max(stakeA, stakeB);
@@ -12,9 +15,13 @@ function stakesCompatible(stakeA: number, stakeB: number): boolean {
   return smaller >= larger * (1 - STAKE_TOLERANCE);
 }
 
+function pickRandomGame(): string {
+  return TWO_PLAYER_GAMES[Math.floor(Math.random() * TWO_PLAYER_GAMES.length)];
+}
+
 /**
- * Universal pairing: match any 2 agents with compatible stake/elo and the same requested gameType.
- * Returns pairs with the chosen gameType.
+ * Universal pairing: match any 2 agents with compatible stake/elo/token.
+ * The system picks the game type randomly.
  */
 export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryData, QueueEntryData, string]> {
   const sorted = [...waitingEntries].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
@@ -29,9 +36,6 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       const entryB = sorted[j];
       if (paired.has(entryB.agentId)) continue;
 
-      // Must be queuing for the same game type
-      if (entryA.gameType !== entryB.gameType) continue;
-
       if (process.env.NODE_ENV !== 'development' && entryA.userId === entryB.userId) {
         const hasHumanOrPull = entryA.agentType === 'human' || entryB.agentType === 'human'
           || entryA.agentType === 'pull' || entryB.agentType === 'pull';
@@ -43,7 +47,8 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       // Same token required
       if ((entryA.token || 'USDC') !== (entryB.token || 'USDC')) continue;
 
-      const chosenGame = entryA.gameType;
+      // System picks the game
+      const chosenGame = pickRandomGame();
       pairs.push([entryA, entryB, chosenGame]);
       paired.add(entryA.agentId);
       paired.add(entryB.agentId);

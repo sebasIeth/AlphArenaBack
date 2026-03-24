@@ -14,7 +14,7 @@ import { X402PaymentStore } from '../settlement/x402-payment-store.service';
 class JoinQueueDto {
   @IsString() @MinLength(1) agentId: string;
   @IsNumber() @Min(MIN_STAKE) @Max(MAX_STAKE) stakeAmount: number;
-  @IsString() @MinLength(1) gameType: string;
+  @IsOptional() @IsString() gameType?: string;
   @IsOptional() @IsIn(['ALPHA', 'USDC']) token?: string;
 }
 
@@ -104,10 +104,11 @@ export class MatchmakingController {
 
     try {
       // Join queue first, then update agent status to avoid desync
-      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, dto.gameType, agent.type, matchToken, agent.gameTypes);
+      const queueGameType = dto.gameType || 'any';
+      await this.matchmakingService.joinQueue(dto.agentId, user.userId, agent.eloRating, dto.stakeAmount, queueGameType, agent.type, matchToken);
       agent.status = 'queued';
       await agent.save();
-      return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: dto.gameType, stakeAmount: dto.stakeAmount, token: matchToken };
+      return { message: 'Successfully joined the matchmaking queue', agentId: dto.agentId, gameType: queueGameType, stakeAmount: dto.stakeAmount, token: matchToken };
     } catch (err) {
       // If queue join succeeded but status update failed, remove from queue
       try { await this.matchmakingService.leaveQueue(dto.agentId); } catch {}

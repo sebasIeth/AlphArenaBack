@@ -191,10 +191,9 @@ export class AgentApiService {
         agent.userId?.toString() ?? agentId,
         agent.eloRating,
         dto.stakeAmount ?? 0,
-        dto.gameType,
+        dto.gameType || 'any',
         'pull',
         dto.token,
-        agent.gameTypes,
       );
 
       return {
