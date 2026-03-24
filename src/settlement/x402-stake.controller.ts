@@ -34,14 +34,16 @@ export class X402StakeController {
   async stake(
     @CurrentUser() user: AuthPayload | undefined,
     @CurrentAgent() agentAuth: Agent | undefined,
-    @Body() body: { agentId: string; stakeAmount: number; gameType: string },
+    @Body() body: { agentId: string; stakeAmount?: number; gameType?: string },
     @Headers('x-payment-tx') paymentTx: string | undefined,
     @Res() res: Response,
   ) {
-    const { agentId, stakeAmount, gameType } = body;
+    const { agentId } = body;
+    const stakeAmount = 1; // Fixed $1 USDC
+    const gameType = 'any';
 
-    if (!agentId || !stakeAmount || !gameType) {
-      throw new BadRequestException('agentId, stakeAmount, and gameType are required');
+    if (!agentId) {
+      throw new BadRequestException('agentId is required');
     }
 
     const agent = await this.agentModel.findById(agentId);
