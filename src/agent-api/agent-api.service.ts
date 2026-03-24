@@ -149,35 +149,30 @@ export class AgentApiService {
       );
     }
 
-    // USDC stakes require x402 pre-payment
-    const matchToken = dto.token || 'ALPHA';
-    if (matchToken === 'USDC' && (dto.stakeAmount ?? 0) > 0) {
+    // Auto-calculate stake: $1 USD equivalent
+    const matchToken = dto.token || 'USDC';
+    let stakeAmount = dto.stakeAmount ?? 1;
+    if (matchToken === 'ALPHA') {
+      const alphaPrice = await this.settlementRouter.getAlphaPriceUsd();
+      if (alphaPrice && alphaPrice > 0) {
+        stakeAmount = Math.ceil(1 / alphaPrice);
+      }
+      if (parseFloat(alphaBalance) < stakeAmount) {
+        throw new BadRequestException(
+          `Insufficient ALPHA balance: ${alphaBalance} but need ${stakeAmount}. Deposit to ${agent.walletAddress}`,
+        );
+      }
+    } else if (matchToken === 'USDC') {
+      stakeAmount = 1;
       const x402Payment = this.x402PaymentStore.getPayment(agentId);
       if (!x402Payment) {
         throw new BadRequestException(
           'USDC matches require x402 payment. POST to /x402/stake first, transfer USDC, verify, then join.',
         );
       }
-      if (x402Payment.amount < (dto.stakeAmount ?? 0)) {
+      if (x402Payment.amount < stakeAmount) {
         throw new BadRequestException(
-          `x402 payment insufficient: paid ${x402Payment.amount} USDC but stake requires ${dto.stakeAmount}`,
-        );
-      }
-    } else if (matchToken === 'ALPHA' && (dto.stakeAmount ?? 0) > 0) {
-      // Validate minimum $1 USD equivalent
-      const alphaPrice = await this.settlementRouter.getAlphaPriceUsd();
-      if (alphaPrice) {
-        const stakeUsd = (dto.stakeAmount ?? 0) * alphaPrice;
-        if (stakeUsd < 1) {
-          const minAlpha = Math.ceil(1 / alphaPrice);
-          throw new BadRequestException(
-            `Minimum stake is $1 USD. At current ALPHA price ($${alphaPrice.toFixed(6)}), you need at least ${minAlpha} ALPHA.`,
-          );
-        }
-      }
-      if (parseFloat(alphaBalance) < (dto.stakeAmount ?? 0)) {
-        throw new BadRequestException(
-          `Insufficient ALPHA balance: ${alphaBalance} but need ${dto.stakeAmount}. Deposit to ${agent.walletAddress}`,
+          `x402 payment insufficient: paid ${x402Payment.amount} USDC but stake requires ${stakeAmount}`,
         );
       }
     }
@@ -190,7 +185,7 @@ export class AgentApiService {
         agentId,
         agent.userId?.toString() ?? agentId,
         agent.eloRating,
-        dto.stakeAmount ?? 0,
+        stakeAmount,
         dto.gameType || 'any',
         'pull',
         dto.token,
@@ -199,9 +194,9 @@ export class AgentApiService {
       return {
         message: 'Successfully joined queue',
         agentId,
-        gameType: dto.gameType,
-        stakeAmount: dto.stakeAmount ?? 0,
-        token: dto.token || 'ALPHA',
+        gameType: dto.gameType || 'any',
+        stakeAmount,
+        token: matchToken,
       };
     } catch (err) {
       agent.status = 'idle';
