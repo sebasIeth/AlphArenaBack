@@ -47,8 +47,22 @@ export function findPairs(waitingEntries: QueueEntryData[]): Array<[QueueEntryDa
       // Same token required
       if ((entryA.token || 'USDC') !== (entryB.token || 'USDC')) continue;
 
-      // System picks the game
-      const chosenGame = pickRandomGame();
+      // Respect specific game type requests; skip if incompatible
+      const gtA = entryA.gameType;
+      const gtB = entryB.gameType;
+      const aSpecific = gtA && gtA !== 'any' && gtA !== 'poker';
+      const bSpecific = gtB && gtB !== 'any' && gtB !== 'poker';
+      let chosenGame: string;
+      if (aSpecific && bSpecific) {
+        if (gtA !== gtB) continue;
+        chosenGame = gtA;
+      } else if (aSpecific) {
+        chosenGame = gtA;
+      } else if (bSpecific) {
+        chosenGame = gtB!;
+      } else {
+        chosenGame = pickRandomGame();
+      }
       pairs.push([entryA, entryB, chosenGame]);
       paired.add(entryA.agentId);
       paired.add(entryB.agentId);

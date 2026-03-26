@@ -20,6 +20,8 @@ import { TurnControllerService } from './turn-controller.service';
 import { MarrakechTurnControllerService } from './marrakech-turn-controller.service';
 import { ChessTurnControllerService } from './chess-turn-controller.service';
 import { PokerTurnControllerService } from './poker-turn-controller.service';
+import { RpsTurnControllerService } from './rps-turn-controller.service';
+import { createRpsInitialState, RpsGameState } from './rps-turn-controller.service';
 import { createInitialState as createPokerInitialState, isMatchOver as isPokerMatchOver } from '../game-engine/poker';
 import { ResultHandlerService } from './result-handler.service';
 import { EventBusService } from './event-bus.service';
@@ -53,6 +55,7 @@ export class MatchManagerService {
   private readonly chessEngines = new Map<string, ChessEngine>();
   private readonly chessMoveHistories = new Map<string, ChessUciMove[]>();
   private readonly pokerStates = new Map<string, PokerGameState>();
+  private readonly rpsStates = new Map<string, RpsGameState>();
   private readonly matchGameTypes = new Map<string, string>();
 
   constructor(
@@ -63,6 +66,7 @@ export class MatchManagerService {
     private readonly marrakechTurnController: MarrakechTurnControllerService,
     private readonly chessTurnController: ChessTurnControllerService,
     private readonly pokerTurnController: PokerTurnControllerService,
+    private readonly rpsTurnController: RpsTurnControllerService,
     private readonly resultHandler: ResultHandlerService,
     private readonly eventBus: EventBusService,
     private readonly settlementRouter: SettlementRouterService,
@@ -121,7 +125,7 @@ export class MatchManagerService {
     const potAmount = stakeAmount * agents.length;
 
     // 2-player games require exactly 2 agents
-    if (gameType === 'chess' || gameType === 'marrakech' || gameType === 'reversi') {
+    if (gameType === 'chess' || gameType === 'marrakech' || gameType === 'reversi' || gameType === 'rps') {
       if (agents.length !== 2) {
         throw new Error(`Game type "${gameType}" requires exactly 2 agents, got ${agents.length}`);
       }
@@ -133,6 +137,10 @@ export class MatchManagerService {
 
     if (gameType === 'chess') {
       return this.createChessMatch(agents[0], agents[1], stakeAmount, potAmount, existingMatchId);
+    }
+
+    if (gameType === 'rps') {
+      return this.createRpsMatch(agents[0], agents[1], stakeAmount, potAmount, existingMatchId);
     }
 
     if (gameType === 'poker') {
@@ -350,6 +358,59 @@ export class MatchManagerService {
     });
 
     this.logger.log(`Chess match ${matchId} created`);
+    return matchId;
+  }
+
+  private async createRpsMatch(
+    agentA: MatchAgentInput, agentB: MatchAgentInput,
+    stakeAmount: number, potAmount: number, existingMatchId?: string,
+  ): Promise<string> {
+    const rpsState = createRpsInitialState();
+    const matchData = {
+      gameType: 'rps', chain: agentA.chain || 'solana', token: agentA.token || 'USDC',
+      agents: {
+        a: { agentId: agentA.agentId, userId: agentA.userId, name: agentA.name, eloAtStart: agentA.eloRating },
+        b: { agentId: agentB.agentId, userId: agentB.userId, name: agentB.name, eloAtStart: agentB.eloRating },
+      },
+      stakeAmount, potAmount, status: 'starting',
+      currentBoard: [], currentTurn: 'a', moveCount: 0,
+      timeouts: { a: 0, b: 0 }, txHashes: { escrow: null, payout: null }, rpsState,
+    };
+    let matchId: string;
+    if (existingMatchId) {
+      await this.matchModel.findByIdAndUpdate(existingMatchId, { $set: matchData });
+      matchId = existingMatchId;
+    } else {
+      const matchDoc = await this.matchModel.create(matchData);
+      matchId = matchDoc._id.toString();
+    }
+    const compatState: GameState = {
+      board: [] as unknown as Board, currentPlayer: 'B', moveNumber: 0,
+      scores: { black: 0, white: 0 }, gameOver: false, winner: null,
+    };
+    const matchState: ActiveMatchState = {
+      matchId, gameState: compatState, clock: null, turnDeadline: 0,
+      timeouts: { a: 0, b: 0 }, status: 'starting',
+      agents: {
+        a: { agentId: agentA.agentId, endpointUrl: agentA.endpointUrl, piece: 'B', type: agentA.type, openclawUrl: agentA.openclawUrl, openclawToken: agentA.openclawToken, openclawAgentId: agentA.openclawAgentId },
+        b: { agentId: agentB.agentId, endpointUrl: agentB.endpointUrl, piece: 'W', type: agentB.type, openclawUrl: agentB.openclawUrl, openclawToken: agentB.openclawToken, openclawAgentId: agentB.openclawAgentId },
+      },
+      startedAt: Date.now(),
+    };
+    this.activeMatches.addMatch(matchState);
+    this.rpsStates.set(matchId, rpsState);
+    this.matchGameTypes.set(matchId, 'rps');
+    await Promise.all([
+      this.agentModel.updateOne({ _id: agentA.agentId }, { status: 'in_match' }),
+      this.agentModel.updateOne({ _id: agentB.agentId }, { status: 'in_match' }),
+    ]);
+    this.eventBus.emit('match:created', {
+      matchId, agents: {
+        a: { agentId: agentA.agentId, name: agentA.name },
+        b: { agentId: agentB.agentId, name: agentB.name },
+      }, gameType: 'rps', stakeAmount,
+    });
+    this.logger.log(`RPS match ${matchId} created`);
     return matchId;
   }
 
@@ -604,6 +665,15 @@ export class MatchManagerService {
         startedPayload.pokerHandNumber = 0;
       }
     }
+    if (gameType === 'rps') {
+      const rpsSt = this.rpsStates.get(matchId);
+      if (rpsSt) {
+        startedPayload.rpsTotalRounds = rpsSt.bestOf;
+        startedPayload.rpsRound = 1;
+        startedPayload.rpsPhase = 'waiting_moves';
+        startedPayload.rpsScores = { a: 0, b: 0 };
+      }
+    }
     this.eventBus.emit('match:started', startedPayload);
 
     // Give human players time to reconnect their sockets before starting the game loop
@@ -623,6 +693,10 @@ export class MatchManagerService {
       loopFn = startDelay > 0
         ? new Promise<void>(r => setTimeout(r, startDelay)).then(() => this.runPokerGameLoop(matchId))
         : this.runPokerGameLoop(matchId);
+    } else if (gameType === 'rps') {
+      loopFn = startDelay > 0
+        ? new Promise<void>(r => setTimeout(r, startDelay)).then(() => this.runRpsGameLoop(matchId))
+        : this.runRpsGameLoop(matchId);
     } else {
       loopFn = startDelay > 0
         ? new Promise<void>(r => setTimeout(r, startDelay)).then(() => this.runGameLoop(matchId))
@@ -857,6 +931,32 @@ export class MatchManagerService {
     }
   }
 
+  private async runRpsGameLoop(matchId: string): Promise<void> {
+    while (true) {
+      const matchState = this.activeMatches.getMatch(matchId);
+      if (!matchState || matchState.status !== 'active') return;
+      const rpsState = this.rpsStates.get(matchId);
+      if (!rpsState) { await this.endMatchWithError(matchId, 'RPS state lost'); return; }
+      const result = await this.rpsTurnController.executeRound(matchState, rpsState);
+      this.rpsStates.set(matchId, result.rpsState);
+      this.activeMatches.updateMatch(matchId, {
+        gameState: {
+          ...matchState.gameState,
+          scores: { black: result.rpsState.scores.a, white: result.rpsState.scores.b },
+          moveNumber: result.rpsState.rounds.length,
+          gameOver: result.matchOver,
+          winner: result.matchOver ? (result.winner === 'a' ? 'B' : result.winner === 'b' ? 'W' : 'draw') : null,
+        },
+      });
+      if (result.matchOver) {
+        const winningSide: Side | undefined = result.winner && result.winner !== 'draw' ? result.winner as Side : undefined;
+        await this.endMatch(matchId, 'score', winningSide);
+        return;
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+
   /**
    * Check if any agent has exceeded MAX_TIMEOUTS. If so, end the match.
    * For 2-player: the other side wins. For N-player: the non-timed-out side with
@@ -891,6 +991,7 @@ export class MatchManagerService {
       this.chessEngines.delete(matchId);
       this.chessMoveHistories.delete(matchId);
       this.pokerStates.delete(matchId);
+      this.rpsStates.delete(matchId);
       this.matchGameTypes.delete(matchId);
       setTimeout(() => this.endedMatches.delete(matchId), 5000);
     }
@@ -939,6 +1040,12 @@ export class MatchManagerService {
           }
         }
         if (bestSide && !tied) forcedWinner = bestSide as Side;
+      }
+    } else if (gameType === 'rps') {
+      const rpsState = this.rpsStates.get(matchId);
+      if (rpsState) {
+        if (rpsState.scores.a > rpsState.scores.b) forcedWinner = 'a';
+        else if (rpsState.scores.b > rpsState.scores.a) forcedWinner = 'b';
       }
     } else {
       const { scores } = matchState.gameState;

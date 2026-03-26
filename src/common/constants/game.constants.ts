@@ -19,7 +19,11 @@ export const PIECE = {
   WHITE: 2,
 } as const;
 
-export const GAME_TYPES = ['chess', 'poker'] as const;
+export const GAME_TYPES = ['chess', 'poker', 'rps'] as const;
+
+export const RPS_BEST_OF = 3;
+export const RPS_VALID_THROWS = ['rock', 'paper', 'scissors'] as const;
+export type RpsThrow = (typeof RPS_VALID_THROWS)[number];
 
 export const POKER_SMALL_BLIND = 20;
 export const POKER_BIG_BLIND = 40;

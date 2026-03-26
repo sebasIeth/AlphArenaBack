@@ -109,6 +109,9 @@ export class Match extends Document {
   @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
   pokerHandHistories: any[];
 
+  @Prop({ type: MongooseSchema.Types.Mixed, default: null })
+  rpsState: any;
+
   @Prop({ type: Date, default: null })
   turnStartedAt: Date;
 

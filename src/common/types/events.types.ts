@@ -19,16 +19,21 @@ export interface MatchStartedEvent {
   // Poker-specific
   pokerPlayerStacks?: Record<string, number>;
   pokerHandNumber?: number;
+  // RPS-specific
+  rpsTotalRounds?: number;
+  rpsRound?: number;
+  rpsPhase?: string;
+  rpsScores?: { a: number; b: number };
 }
 
 export interface MatchMoveEvent {
   matchId: string;
-  side: string;
-  move: { row: number; col: number };
-  boardState: Board;
-  score: Record<string, number>;
-  moveNumber: number;
-  thinkingTimeMs: number;
+  side?: string;
+  move?: { row: number; col: number };
+  boardState?: Board;
+  score?: Record<string, number>;
+  moveNumber?: number;
+  thinkingTimeMs?: number;
   // Marrakech-specific
   assam?: { position: { row: number; col: number }; direction: string };
   diceResult?: { value: number; faces: number[] };
@@ -50,6 +55,12 @@ export interface MatchMoveEvent {
   pokerPlayers?: { seatIndex: number; side: string; stack: number; holeCards: { rank: string; suit: string }[]; currentBet: number; hasFolded: boolean; isAllIn: boolean; isDealer: boolean }[];
   pokerShowdownResult?: { winnerSide: string; winnerHand?: { rank: number; description: string }; loserHand?: { rank: number; description: string } } | null;
   pokerHandResult?: { handNumber: number; holeCards: Record<string, { rank: string; suit: string }[]>; communityCards: { rank: string; suit: string }[]; result: string; winner: string | null; pot: number };
+  // RPS-specific
+  rpsRound?: number;
+  rpsTotalRounds?: number;
+  rpsPhase?: string;
+  rpsScores?: { a: number; b: number };
+  rpsResult?: { roundNumber: number; throwA: string; throwB: string; winner: string };
 }
 
 export interface MatchTimeoutEvent {
@@ -100,12 +111,12 @@ export interface MatchYourTurnEvent {
   matchId: string;
   side: string;
   gameType: string;
-  board: Board;
-  legalMoves: unknown[];
+  board?: Board;
+  legalMoves?: unknown[];
   fen?: string;
-  moveNumber: number;
-  timeRemainingMs: number;
-  turnTimeoutMs: number;
+  moveNumber?: number;
+  timeRemainingMs?: number;
+  turnTimeoutMs?: number;
   // Poker-specific
   pokerHoleCards?: { rank: string; suit: string }[];
   pokerCommunityCards?: { rank: string; suit: string }[];
@@ -115,6 +126,11 @@ export interface MatchYourTurnEvent {
   pokerHandNumber?: number;
   pokerIsDealer?: boolean;
   pokerActionHistory?: { type: string; amount?: number; playerSide: string; street: string }[];
+  // RPS-specific
+  rpsRound?: number;
+  rpsTotalRounds?: number;
+  rpsPhase?: string;
+  rpsScores?: { a: number; b: number };
 }
 
 export interface EventBusEvents {

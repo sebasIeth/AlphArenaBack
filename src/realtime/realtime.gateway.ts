@@ -146,8 +146,27 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return;
     }
 
-    // Find the user's human agent that is currently playing in this match
-    const pendingAgentId = this.humanMoveService.getPendingAgentId(data.matchId);
+    // Find the user's human agent that is currently playing in this match.
+    // For RPS: simultaneous moves use keys "matchId:a" and "matchId:b"
+    let pendingKey = data.matchId;
+    let pendingAgentId = this.humanMoveService.getPendingAgentId(data.matchId);
+
+    if (!pendingAgentId) {
+      // Try RPS-style per-side keys
+      for (const side of ['a', 'b']) {
+        const sideKey = `${data.matchId}:${side}`;
+        const sideAgentId = this.humanMoveService.getPendingAgentId(sideKey);
+        if (sideAgentId) {
+          const sideAgent = await this.agentModel.findById(sideAgentId);
+          if (sideAgent && sideAgent.userId && sideAgent.userId.toString() === user.userId && sideAgent.type === 'human') {
+            pendingKey = sideKey;
+            pendingAgentId = sideAgentId;
+            break;
+          }
+        }
+      }
+    }
+
     if (!pendingAgentId) {
       client.emit('message', { type: 'error', data: { message: 'No pending move for this match.' } });
       return;
@@ -160,7 +179,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return;
     }
 
-    const submitted = this.humanMoveService.submitMove(data.matchId, pendingAgentId, data.move);
+    const submitted = this.humanMoveService.submitMove(pendingKey, pendingAgentId, data.move);
     if (submitted) {
       client.emit('message', { type: 'game:move_accepted', data: { matchId: data.matchId } });
     } else {
@@ -181,7 +200,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   /** Re-send match:your_turn if there's a pending human move for this match */
   private resendPendingTurn(matchId: string, client: Socket): void {
-    const pendingSide = this.humanMoveService.getPendingSide(matchId);
+    let pendingSide = this.humanMoveService.getPendingSide(matchId);
+    if (!pendingSide) {
+      for (const side of ['a', 'b']) {
+        const sideKey = `${matchId}:${side}`;
+        const sidePending = this.humanMoveService.getPendingSide(sideKey);
+        if (sidePending) { pendingSide = sidePending; break; }
+      }
+    }
     if (!pendingSide) return;
 
     const user = (client as any).user as { userId: string } | undefined;

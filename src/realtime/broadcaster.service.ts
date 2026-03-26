@@ -45,6 +45,11 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       // Poker-specific
       if (data.pokerPlayerStacks) payload.pokerPlayerStacks = data.pokerPlayerStacks;
       if (data.pokerHandNumber != null) payload.pokerHandNumber = data.pokerHandNumber;
+      // RPS-specific
+      if (data.rpsTotalRounds != null) payload.rpsTotalRounds = data.rpsTotalRounds;
+      if (data.rpsRound != null) payload.rpsRound = data.rpsRound;
+      if (data.rpsPhase) payload.rpsPhase = data.rpsPhase;
+      if (data.rpsScores) payload.rpsScores = data.rpsScores;
       this.rooms.broadcast(data.matchId, { type: 'match:start', data: payload });
     };
 
@@ -52,12 +57,12 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       const payload: Record<string, unknown> = {
         matchId: data.matchId,
         side: data.side,
-        move: { row: data.move.row, col: data.move.col },
-        boardState: data.boardState,
-        score: { a: data.score.a, b: data.score.b },
-        moveNumber: data.moveNumber,
-        thinkingTimeMs: data.thinkingTimeMs,
       };
+      if (data.move) payload.move = { row: data.move.row, col: data.move.col };
+      if (data.boardState) payload.boardState = data.boardState;
+      if (data.score) payload.score = { a: data.score.a, b: data.score.b };
+      if (data.moveNumber != null) payload.moveNumber = data.moveNumber;
+      if (data.thinkingTimeMs != null) payload.thinkingTimeMs = data.thinkingTimeMs;
       // Marrakech-specific fields
       if (data.assam) payload.assam = data.assam;
       if (data.diceResult) payload.diceResult = data.diceResult;
@@ -79,6 +84,12 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.pokerPlayers) payload.pokerPlayers = data.pokerPlayers;
       if (data.pokerShowdownResult !== undefined) payload.pokerShowdownResult = data.pokerShowdownResult;
       if (data.pokerHandResult) payload.pokerHandResult = data.pokerHandResult;
+      // RPS-specific fields
+      if (data.rpsRound != null) payload.rpsRound = data.rpsRound;
+      if (data.rpsTotalRounds != null) payload.rpsTotalRounds = data.rpsTotalRounds;
+      if (data.rpsPhase) payload.rpsPhase = data.rpsPhase;
+      if (data.rpsScores) payload.rpsScores = data.rpsScores;
+      if (data.rpsResult) payload.rpsResult = data.rpsResult;
       this.rooms.broadcast(data.matchId, { type: 'match:move', data: payload });
     };
 
@@ -165,6 +176,11 @@ export class BroadcasterService implements OnModuleInit, OnModuleDestroy {
       if (data.pokerHandNumber != null) ytPayload.pokerHandNumber = data.pokerHandNumber;
       if (data.pokerIsDealer != null) ytPayload.pokerIsDealer = data.pokerIsDealer;
       if (data.pokerActionHistory) ytPayload.pokerActionHistory = data.pokerActionHistory;
+      // RPS-specific
+      if (data.rpsRound != null) ytPayload.rpsRound = data.rpsRound;
+      if (data.rpsTotalRounds != null) ytPayload.rpsTotalRounds = data.rpsTotalRounds;
+      if (data.rpsPhase) ytPayload.rpsPhase = data.rpsPhase;
+      if (data.rpsScores) ytPayload.rpsScores = data.rpsScores;
       this.rooms.broadcast(data.matchId, { type: 'match:your_turn', data: ytPayload });
     };
 
